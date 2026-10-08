@@ -1,0 +1,19 @@
+[package]
+name = "voicekey-asr"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+voicekey-core = { path = "../core" }
+voicekey-text = { path = "../text" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tempfile = "3.14"
+hound = "3.5"
+tokio = { workspace = true }
+
+[dev-dependencies]
