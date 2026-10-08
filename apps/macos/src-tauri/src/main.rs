@@ -504,6 +504,17 @@ fn main() {
                 }
             }
 
+            // Hide main window on close button instead of quitting app
+            if let Some(main_win) = app.get_webview_window("main") {
+                let w = main_win.clone();
+                main_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = w.hide();
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -524,6 +535,15 @@ fn main() {
             stop_recording_and_insert,
             cancel_recording,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running VoiceKey application");
+        .build(tauri::generate_context!())
+        .expect("error while running VoiceKey application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Reopen { .. } = event {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+            }
+        });
 }
