@@ -4,27 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VoiceKey</title>
+  <link rel="icon" type="image/png" href="icon.png">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <div class="app-container">
+  <div class="app-layout">
     <!-- Native macOS Sidebar -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="brand-icon">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-            <line x1="12" y1="19" x2="12" y2="22"></line>
-          </svg>
-        </div>
-        <div class="brand-text">
-          <span class="brand-name">VoiceKey</span>
-          <span class="brand-tagline">Speak. Type. Done.</span>
+    <aside class="app-sidebar">
+      <div class="sidebar-brand">
+        <img src="icon.png" class="brand-app-icon" alt="VoiceKey Icon" />
+        <div class="brand-titles">
+          <span class="brand-title">VoiceKey</span>
+          <span class="brand-sub">Native Voice AI</span>
         </div>
       </div>
 
       <nav class="sidebar-nav">
+        <div class="sidebar-section-label">General</div>
         <div class="nav-item active" data-view="overview">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="7" height="7"></rect>
@@ -48,13 +44,12 @@
         <div class="nav-item" data-view="history">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
-            <polyline points="12 6 12 12 16 14"></polyline>
+            <polyline points="12 6 12 16 14"></polyline>
           </svg>
           <span>History</span>
         </div>
 
-        <div class="sidebar-divider"></div>
-
+        <div class="sidebar-section-label" style="margin-top: 6px;">System</div>
         <div class="nav-item" data-view="settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"></circle>
@@ -74,17 +69,23 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button id="btn-cmd-palette" class="cmd-hint-btn">
-          <span>Commands</span>
+        <button id="btn-cmd-palette" class="shortcut-trigger">
+          <span>Quick Commands</span>
           <span class="kbd">⌘ K</span>
         </button>
       </div>
     </aside>
 
-    <!-- Main Viewport -->
-    <main class="main-content">
-      <div class="content-body" id="content-body">
-        <!-- Views dynamically injected by app.js -->
+    <!-- Main Content -->
+    <main class="app-content">
+      <header class="app-toolbar" id="app-toolbar">
+        <div class="toolbar-title" id="toolbar-title">Overview</div>
+        <div class="toolbar-actions" id="toolbar-actions">
+          <span class="kbd">⌥ Space</span>
+        </div>
+      </header>
+      <div class="content-scroll" id="content-body">
+        <!-- Rendered by app.js -->
       </div>
     </main>
   </div>

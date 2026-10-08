@@ -1,4 +1,4 @@
-// VoiceKey - Main Application Controller
+// VoiceKey - Authentic macOS Application Controller
 import { tauriService } from './tauriService.js';
 import { modelService } from './modelService.js';
 import { historyService } from './historyService.js';
@@ -7,7 +7,6 @@ class VoiceKeyApp {
   constructor() {
     this.currentView = 'overview';
     this.modelsTab = 'installed';
-    this.selectedLanguageFilter = 'All';
     this.searchQuery = '';
     this.settings = null;
     this.audioDevices = [];
@@ -24,12 +23,6 @@ class VoiceKeyApp {
     this.audioDevices = await tauriService.getAudioDevices();
     this.systemCapabilities = await tauriService.getSystemCapabilities();
 
-    // Check onboarding
-    if (!localStorage.getItem('voicekey_onboarded')) {
-      this.openOnboarding();
-    }
-
-    // Fetch initial status from native backend
     try {
       const initialStatus = await tauriService.getStatus();
       const s = typeof initialStatus === 'string' ? initialStatus.toLowerCase() : String(initialStatus).toLowerCase();
@@ -38,14 +31,12 @@ class VoiceKeyApp {
       this.isRecording = false;
     }
 
-    // Subscribe to model service
     modelService.subscribe(() => {
       if (this.currentView === 'overview') this.renderOverview();
       else if (this.currentView === 'models') this.renderModels();
       this.updateSidebarBadges();
     });
 
-    // Listen to native status changes
     tauriService.on('status-changed', (event) => {
       const status = typeof event.payload === 'string' ? event.payload.toLowerCase() : String(event.payload).toLowerCase();
       this.isRecording = status === 'recording' || status === 'processing' || status === 'writing';
@@ -67,7 +58,6 @@ class VoiceKeyApp {
   }
 
   bindEvents() {
-    // Sidebar navigation
     document.querySelectorAll('.nav-item').forEach(item => {
       item.addEventListener('click', () => {
         const view = item.getAttribute('data-view');
@@ -75,22 +65,17 @@ class VoiceKeyApp {
       });
     });
 
-    // Command palette trigger
     const cmdBtn = document.getElementById('btn-cmd-palette');
     if (cmdBtn) cmdBtn.addEventListener('click', () => this.openCommandPalette());
 
-    // Global keyboard shortcuts
     window.addEventListener('keydown', (e) => {
-      // ⌘ K - Command Palette
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         this.toggleCommandPalette();
       }
-      // Esc closes modals
       if (e.key === 'Escape') {
         this.closeAllModals();
       }
-      // ⌘ 1-5 View Switching
       if (e.metaKey || e.ctrlKey) {
         if (e.key === '1') this.switchView('overview');
         if (e.key === '2') this.switchView('models');
@@ -99,13 +84,6 @@ class VoiceKeyApp {
         if (e.key === '5') this.switchView('about');
         if (e.key === ',') this.switchView('settings');
       }
-    });
-
-    // Modal close buttons
-    document.querySelectorAll('.modal-close-btn, .modal-overlay').forEach(el => {
-      el.addEventListener('click', (e) => {
-        if (e.target === el) this.closeAllModals();
-      });
     });
   }
 
@@ -116,22 +94,61 @@ class VoiceKeyApp {
       el.classList.toggle('active', el.getAttribute('data-view') === view);
     });
 
-    const contentBody = document.getElementById('content-body');
-    if (!contentBody) return;
+    const titleEl = document.getElementById('toolbar-title');
+    const actionsEl = document.getElementById('toolbar-actions');
 
-    if (view === 'overview') this.renderOverview();
-    else if (view === 'models') this.renderModels();
-    else if (view === 'history') this.renderHistory();
-    else if (view === 'settings') this.renderSettings();
-    else if (view === 'about') this.renderAbout();
+    if (view === 'overview') {
+      if (titleEl) titleEl.textContent = 'Overview';
+      if (actionsEl) actionsEl.innerHTML = `<span class="kbd">⌥ Space</span>`;
+      this.renderOverview();
+    } else if (view === 'models') {
+      if (titleEl) titleEl.textContent = 'Speech Models';
+      if (actionsEl) {
+        actionsEl.innerHTML = `
+          <div class="segmented-bar">
+            <button class="segment-item ${this.modelsTab === 'installed' ? 'active' : ''}" id="tab-installed">Installed</button>
+            <button class="segment-item ${this.modelsTab === 'available' ? 'active' : ''}" id="tab-available">Available</button>
+          </div>
+          <div class="search-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" id="models-search-box" placeholder="Filter models..." value="${this.searchQuery}">
+          </div>
+        `;
+        document.getElementById('tab-installed')?.addEventListener('click', () => {
+          this.modelsTab = 'installed';
+          this.switchView('models');
+        });
+        document.getElementById('tab-available')?.addEventListener('click', () => {
+          this.modelsTab = 'available';
+          this.switchView('models');
+        });
+        document.getElementById('models-search-box')?.addEventListener('input', (e) => {
+          this.searchQuery = e.target.value;
+          this.renderModels();
+        });
+      }
+      this.renderModels();
+    } else if (view === 'history') {
+      if (titleEl) titleEl.textContent = 'Transcription History';
+      if (actionsEl) actionsEl.innerHTML = ``;
+      this.renderHistory();
+    } else if (view === 'settings') {
+      if (titleEl) titleEl.textContent = 'Settings';
+      if (actionsEl) actionsEl.innerHTML = ``;
+      this.renderSettings();
+    } else if (view === 'about') {
+      if (titleEl) titleEl.textContent = 'About VoiceKey';
+      if (actionsEl) actionsEl.innerHTML = ``;
+      this.renderAbout();
+    }
   }
 
   showToast(message) {
-    let toast = document.getElementById('toast-notice');
+    let toast = document.getElementById('toast-msg');
     if (!toast) {
       toast = document.createElement('div');
-      toast.id = 'toast-notice';
-      toast.className = 'toast-notice';
+      toast.id = 'toast-msg';
+      toast.className = 'toast-msg';
       document.body.appendChild(toast);
     }
     toast.textContent = message;
@@ -139,139 +156,134 @@ class VoiceKeyApp {
     clearTimeout(this.toastTimeout);
     this.toastTimeout = setTimeout(() => {
       toast.classList.remove('show');
-    }, 2400);
+    }, 2200);
   }
 
   /* ---------------- OVERVIEW VIEW ---------------- */
   renderOverview() {
     const container = document.getElementById('content-body');
     const activeModel = modelService.getActiveModel();
-    const isOnline = navigator.onLine;
-
     const micDevice = this.audioDevices.find(d => d.is_default)?.name || 'Built-in Microphone';
 
+    const paramStr = activeModel?.parameters
+      ? (activeModel.parameters >= 1000000000
+          ? (activeModel.parameters / 1000000000).toFixed(1) + 'B'
+          : Math.round(activeModel.parameters / 1000000) + 'M')
+      : '119M';
+
     container.innerHTML = `
-      <div class="page-header">
-        <h1 class="page-title">Overview</h1>
-        <p class="page-subtitle">Speak freely anywhere in macOS. Press the global shortcut to dictate text.</p>
-      </div>
-
-      <div class="status-banner">
-        <div class="status-info">
-          <div class="status-dot ${this.isRecording ? 'active' : 'idle'}"></div>
-          <div>
-            <div class="status-title">${this.isRecording ? 'Listening...' : 'Idle'}</div>
-            <div class="status-desc">${this.isRecording ? 'Microphone active. Speak or press <span class="kbd">⌥ Space</span> to finish.' : 'Microphone is off. Press <span class="kbd">⌥ Space</span> anywhere to start dictating.'}</div>
-          </div>
-        </div>
-        <div class="status-action-group">
-          <button id="btn-test-dictate" class="btn ${this.isRecording ? 'btn-danger' : 'btn-secondary'}">
-            ${this.isRecording ? 'Stop Dictation' : 'Start Dictation'}
-          </button>
-        </div>
-      </div>
-
-      <div class="overview-grid">
-        <!-- Active Model Card -->
-        <div class="card model-highlight-card">
-          <div>
-            <div class="card-header-row">
-              <div class="card-title-group">
-                <h3>Active Speech Model</h3>
-                <p>${activeModel ? activeModel.task : 'Speech to Text'}</p>
+      <!-- Dictation Section -->
+      <div class="grouped-section">
+        <div class="grouped-section-title">Dictation Engine</div>
+        <div class="inset-group">
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">State</div>
+              <div class="row-subtitle">
+                ${this.isRecording ? 'Listening at cursor. Voice input is actively processed.' : 'Standby. Microphone is turned off until shortcut is pressed.'}
               </div>
-              <span class="badge active-badge">Active ●</span>
             </div>
-
-            <div style="font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 6px 0 2px 0;">
-              ${activeModel ? activeModel.name : 'None selected'}
-            </div>
-            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
-              ${activeModel ? activeModel.description : 'Please select a speech model to begin.'}
-            </div>
-
-            <div class="model-meta-chips">
-              <span class="chip">${activeModel ? activeModel.languages.join(', ') : 'Nepali'}</span>
-              <span class="chip">${activeModel?.parameters ? Math.round(activeModel.parameters / 1000000) + 'M params' : 'Local'}</span>
-              <span class="chip">${activeModel ? activeModel.runtime : 'Local'}</span>
-              <span class="chip">Apple Silicon ✓</span>
+            <div class="row-right">
+              <div class="status-indicator">
+                <span class="status-dot ${this.isRecording ? 'active' : 'idle'}"></span>
+                <span>${this.isRecording ? 'Listening...' : 'Standby'}</span>
+              </div>
+              <button id="btn-toggle-recording" class="mac-btn ${this.isRecording ? 'mac-btn-danger' : 'mac-btn-default'}">
+                ${this.isRecording ? 'Stop Dictation' : 'Start Dictation'}
+              </button>
             </div>
           </div>
 
-          <div class="card-action-bar">
-            <button id="btn-open-model-detail" class="btn btn-secondary btn-sm">Inspect Model</button>
-            <button id="btn-switch-model" class="btn btn-primary btn-sm">Switch Model</button>
-          </div>
-        </div>
-
-        <!-- Microphone Card -->
-        <div class="card">
-          <div class="card-header-row">
-            <div class="card-title-group">
-              <h3>Microphone</h3>
-              <p>Audio Input Source</p>
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">Global Hotkey</div>
+              <div class="row-subtitle">Toggle voice dictation anywhere in macOS</div>
             </div>
-            <span class="badge ${this.isRecording ? 'accent-badge' : (this.micTesting ? 'accent-badge' : '')}">
-              ${this.isRecording ? 'Active' : (this.micTesting ? 'Testing' : 'Standby')}
-            </span>
-          </div>
-
-          <div style="font-size: 14px; font-weight: 500; color: var(--text-primary); margin: 8px 0 4px 0;">
-            ${micDevice}
-          </div>
-          <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">
-            16 kHz mono capture. Remains completely idle until dictation is triggered.
-          </div>
-
-          <div class="meter-container">
-            <div class="meter-label-row">
-              <span>Input Level</span>
-              <span id="overview-meter-val">${this.micTesting ? 'Active' : 'Idle'}</span>
+            <div class="row-right">
+              <span class="kbd">⌥ Space</span>
             </div>
-            <div class="meter-track">
-              <div id="overview-meter-fill" class="meter-fill" style="width: 4%;"></div>
-            </div>
-          </div>
-
-          <div class="card-action-bar">
-            <button id="btn-toggle-mic-test" class="btn btn-secondary btn-sm">
-              ${this.micTesting ? 'Stop Test' : 'Test Microphone'}
-            </button>
           </div>
         </div>
       </div>
 
-      <!-- System Readiness Checklist -->
-      <div class="section-block">
-        <div class="section-title">System Readiness</div>
-        <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="color: var(--success); font-weight: bold;">✓</span>
-              <span>Global Shortcut Configured</span>
+      <!-- Active Model Section -->
+      <div class="grouped-section">
+        <div class="grouped-section-title">Active Speech Model</div>
+        <div class="inset-group">
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title" style="display: flex; align-items: center; gap: 8px;">
+                <span>${activeModel ? activeModel.name : 'Kriti'}</span>
+                <span class="active-pill">Active</span>
+              </div>
+              <div class="row-subtitle">
+                ${activeModel ? `${activeModel.languages.join(', ')} • ${paramStr} parameters • ${activeModel.runtime}` : 'Nepali speech recognition'}
+              </div>
             </div>
-            <span class="kbd">⌥ Space</span>
+            <div class="row-right">
+              <button id="btn-goto-models" class="mac-btn mac-btn-default">Change Model...</button>
+            </div>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--separator); padding-top: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="color: var(--success); font-weight: bold;">✓</span>
-              <span>100% Privacy-First & Local Transcription</span>
+        </div>
+      </div>
+
+      <!-- Audio Input Section -->
+      <div class="grouped-section">
+        <div class="grouped-section-title">Audio Hardware</div>
+        <div class="inset-group">
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">${micDevice}</div>
+              <div class="row-subtitle">16 kHz mono high-fidelity capture</div>
             </div>
-            <span style="font-size: 11px; color: var(--text-tertiary);">No Cloud Required</span>
+            <div class="row-right">
+              <button id="btn-mic-tester" class="mac-btn mac-btn-default">
+                ${this.micTesting ? 'Stop Test' : 'Test Microphone'}
+              </button>
+            </div>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--separator); padding-top: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="color: var(--success); font-weight: bold;">✓</span>
-              <span>Accessibility Permission</span>
+          ${this.micTesting ? `
+            <div class="group-row" style="background-color: var(--bg-control);">
+              <div class="row-left">
+                <div class="row-subtitle">Input Level Monitor</div>
+              </div>
+              <div class="row-right" style="width: 140px;">
+                <div class="mini-progress-bar" style="height: 6px;">
+                  <div id="mic-test-fill" class="mini-progress-fill" style="width: 25%;"></div>
+                </div>
+              </div>
             </div>
-            <span style="font-size: 11px; color: var(--success);">Granted</span>
+          ` : ''}
+        </div>
+      </div>
+
+      <!-- System Readiness Section -->
+      <div class="grouped-section">
+        <div class="grouped-section-title">System & Security</div>
+        <div class="inset-group">
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">Privacy Architecture</div>
+              <div class="row-subtitle">All speech inference runs on-device on Apple Silicon</div>
+            </div>
+            <div class="row-right">
+              <span style="font-size: 11px; color: var(--text-secondary);">100% On-Device</span>
+            </div>
+          </div>
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">Accessibility Insertion</div>
+              <div class="row-subtitle">Types recognized words directly at active text cursor</div>
+            </div>
+            <div class="row-right">
+              <span style="font-size: 11px; color: var(--success); font-weight: 500;">Granted ✓</span>
+            </div>
           </div>
         </div>
       </div>
     `;
 
-    // Hook overview listeners
-    document.getElementById('btn-test-dictate')?.addEventListener('click', async () => {
+    document.getElementById('btn-toggle-recording')?.addEventListener('click', async () => {
       if (this.isRecording) {
         await tauriService.stopListening();
         this.isRecording = false;
@@ -282,38 +294,22 @@ class VoiceKeyApp {
       this.renderOverview();
     });
 
-    document.getElementById('btn-switch-model')?.addEventListener('click', () => {
+    document.getElementById('btn-goto-models')?.addEventListener('click', () => {
       this.switchView('models');
     });
 
-    document.getElementById('btn-open-model-detail')?.addEventListener('click', () => {
-      if (activeModel) this.openModelDetailModal(activeModel);
+    document.getElementById('btn-mic-tester')?.addEventListener('click', () => {
+      this.micTesting = !this.micTesting;
+      if (this.micTesting) {
+        this.micInterval = setInterval(() => {
+          const fill = document.getElementById('mic-test-fill');
+          if (fill) fill.style.width = Math.floor(15 + Math.random() * 65) + '%';
+        }, 100);
+      } else {
+        clearInterval(this.micInterval);
+      }
+      this.renderOverview();
     });
-
-    document.getElementById('btn-toggle-mic-test')?.addEventListener('click', () => {
-      this.toggleMicTest();
-    });
-  }
-
-  toggleMicTest() {
-    this.micTesting = !this.micTesting;
-    const meterFill = document.getElementById('overview-meter-fill');
-    const meterVal = document.getElementById('overview-meter-val');
-    const btn = document.getElementById('btn-toggle-mic-test');
-
-    if (this.micTesting) {
-      if (btn) btn.textContent = 'Stop Test';
-      if (meterVal) meterVal.textContent = 'Active';
-      this.micInterval = setInterval(() => {
-        const pct = Math.floor(15 + Math.random() * 65);
-        if (meterFill) meterFill.style.width = pct + '%';
-      }, 100);
-    } else {
-      if (btn) btn.textContent = 'Test Microphone';
-      if (meterVal) meterVal.textContent = 'Idle';
-      if (meterFill) meterFill.style.width = '4%';
-      clearInterval(this.micInterval);
-    }
   }
 
   /* ---------------- MODELS VIEW ---------------- */
@@ -321,25 +317,16 @@ class VoiceKeyApp {
     const container = document.getElementById('content-body');
     const allModels = modelService.getModels();
 
-    // Filter by tab
-    let displayed = allModels;
+    let list = allModels;
     if (this.modelsTab === 'installed') {
-      displayed = allModels.filter(m => m.status === 'installed' || m.status === 'active');
-    } else if (this.modelsTab === 'available') {
-      displayed = allModels.filter(m => m.status === 'available' || m.status === 'downloading' || m.status === 'verifying' || m.status === 'installing');
-    } else if (this.modelsTab === 'updates') {
-      displayed = allModels.filter(m => m.status === 'update_available');
+      list = allModels.filter(m => m.status === 'installed' || m.status === 'active');
+    } else {
+      list = allModels.filter(m => m.status === 'available' || m.status === 'downloading' || m.status === 'verifying' || m.status === 'installing');
     }
 
-    // Filter by language
-    if (this.selectedLanguageFilter !== 'All') {
-      displayed = displayed.filter(m => m.languages.some(l => l.toLowerCase().includes(this.selectedLanguageFilter.toLowerCase())));
-    }
-
-    // Filter by search query
     if (this.searchQuery.trim()) {
       const q = this.searchQuery.toLowerCase();
-      displayed = displayed.filter(m =>
+      list = list.filter(m =>
         m.name.toLowerCase().includes(q) ||
         m.description.toLowerCase().includes(q) ||
         m.runtime.toLowerCase().includes(q) ||
@@ -348,242 +335,107 @@ class VoiceKeyApp {
     }
 
     container.innerHTML = `
-      <div class="page-header">
-        <h1 class="page-title">Models</h1>
-        <p class="page-subtitle">Choose the speech recognition model VoiceKey uses for transcription. Download, manage, and switch models at any time.</p>
-      </div>
-
-      <!-- Segmented Tabs -->
-      <div class="segmented-control">
-        <button class="segment-btn ${this.modelsTab === 'installed' ? 'active' : ''}" data-tab="installed">Installed (${modelService.getInstalledModels().length})</button>
-        <button class="segment-btn ${this.modelsTab === 'available' ? 'active' : ''}" data-tab="available">Available</button>
-        <button class="segment-btn ${this.modelsTab === 'updates' ? 'active' : ''}" data-tab="updates">Updates</button>
-      </div>
-
-      <!-- Toolbar: Search & Language Chips -->
-      <div class="toolbar-row">
-        <div class="search-input-wrap">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input id="models-search-input" class="search-input" type="text" placeholder="Search models by name, runtime, or language (⌘F)..." value="${this.searchQuery}">
-        </div>
-      </div>
-
-      <div class="filter-chips-row">
-        <span style="font-size: 11px; color: var(--text-tertiary); margin-right: 4px;">Language:</span>
-        ${['All', 'Nepali', 'English', 'Hindi', 'Multilingual'].map(lang => `
-          <button class="filter-chip ${this.selectedLanguageFilter === lang ? 'active' : ''}" data-lang="${lang}">${lang}</button>
-        `).join('')}
-      </div>
-
-      <!-- Recommendation Banner for Available Tab -->
-      ${this.modelsTab === 'available' ? `
-        <div style="margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; background-color: var(--accent-subtle); border: 1px solid var(--accent-border); font-size: 12px; color: var(--text-primary); display: flex; align-items: center; justify-content: space-between;">
-          <div>
-            <strong>Recommended for your Mac:</strong> Apple Silicon • 16 GB RAM • Optimized for local Conformer & Core ML inference.
+      <div class="models-table">
+        ${list.length === 0 ? `
+          <div style="text-align: center; padding: 48px 16px; color: var(--text-tertiary);">
+            <div style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">No models in this view</div>
+            <div style="font-size: 12px;">Switch tabs or adjust your search filter above.</div>
           </div>
-          <span class="badge accent-badge">Native Metal</span>
-        </div>
-      ` : ''}
-
-      <!-- Models List -->
-      <div class="models-list">
-        ${displayed.length === 0 ? `
-          <div class="empty-state">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></svg>
-            <h4>No models found</h4>
-            <p>Try clearing your search query or switching tabs to browse available models.</p>
-          </div>
-        ` : displayed.map(model => this.renderModelCardHtml(model)).join('')}
+        ` : list.map(model => this.renderModelRow(model)).join('')}
       </div>
     `;
 
-    // Hook tab buttons
-    container.querySelectorAll('.segment-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this.modelsTab = btn.getAttribute('data-tab');
-        this.renderModels();
-      });
-    });
-
-    // Hook filter chips
-    container.querySelectorAll('.filter-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        this.selectedLanguageFilter = chip.getAttribute('data-lang');
-        this.renderModels();
-      });
-    });
-
-    // Hook search input
-    const searchInput = document.getElementById('models-search-input');
-    if (searchInput) {
-      searchInput.addEventListener('input', (e) => {
-        this.searchQuery = e.target.value;
-        this.renderModels();
-        // preserve focus
-        const updatedInput = document.getElementById('models-search-input');
-        if (updatedInput) {
-          updatedInput.focus();
-          updatedInput.setSelectionRange(this.searchQuery.length, this.searchQuery.length);
-        }
-      });
-    }
-
-    // Hook card action buttons
-    container.querySelectorAll('[data-action]').forEach(btn => {
+    container.querySelectorAll('[data-model-action]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
-        const action = btn.getAttribute('data-action');
-        const modelId = btn.getAttribute('data-model-id');
-        const model = modelService.getModelById(modelId);
+        const action = btn.getAttribute('data-model-action');
+        const id = btn.getAttribute('data-model-id');
+        const model = modelService.getModelById(id);
 
         if (action === 'activate') {
-          await modelService.activateModel(modelId);
-          this.showToast(`Activated ${model.name}`);
+          await modelService.activateModel(id);
+          this.showToast(`Active model set to ${model.name}`);
         } else if (action === 'download') {
-          await modelService.downloadModel(modelId);
+          await modelService.downloadModel(id);
           this.showToast(`Downloading ${model.name}...`);
-        } else if (action === 'cancel-download') {
-          await modelService.cancelDownload(modelId);
-          this.showToast(`Download cancelled`);
+        } else if (action === 'cancel') {
+          await modelService.cancelDownload(id);
+          this.showToast('Download cancelled');
         } else if (action === 'remove') {
-          if (confirm(`Are you sure you want to remove ${model.name}?`)) {
-            await modelService.removeModel(modelId);
+          if (confirm(`Remove ${model.name}?`)) {
+            await modelService.removeModel(id);
             this.showToast(`Removed ${model.name}`);
           }
-        } else if (action === 'details') {
-          this.openModelDetailModal(model);
+        } else if (action === 'inspect') {
+          this.openModelDetailSheet(model);
         }
       });
     });
   }
 
-  renderModelCardHtml(model) {
+  renderModelRow(model) {
     const isActive = model.status === 'active';
     const isDownloading = model.status === 'downloading';
     const isVerifying = model.status === 'verifying';
     const isInstalling = model.status === 'installing';
     const isInstalled = model.status === 'installed' || isActive;
 
-    const mbSize = model.downloadSize ? (model.downloadSize / (1024 * 1024)).toFixed(0) + ' MB' : '~500 MB';
-    const paramStr = model.parameters ? (model.parameters >= 1000000000 ? (model.parameters / 1000000000).toFixed(1) + 'B' : Math.round(model.parameters / 1000000) + 'M') : 'N/A';
+    const langCode = model.languages[0] === 'Nepali' ? 'NE' : (model.languages[0] === 'Newari' ? 'NEW' : (model.languages[0] === 'Hindi' ? 'HI' : 'MULTI'));
+    const mbSize = model.downloadSize ? (model.downloadSize / (1024 * 1024)).toFixed(0) + ' MB' : '480 MB';
+    const paramStr = model.parameters
+      ? (model.parameters >= 1000000000 ? (model.parameters / 1000000000).toFixed(1) + 'B' : Math.round(model.parameters / 1000000) + 'M')
+      : '119M';
 
     return `
-      <div class="model-card ${isActive ? 'is-active-model' : ''}">
-        <div class="model-header-row">
-          <div class="model-title-group">
-            <div class="model-name">
-              <span>${model.name}</span>
-              <span style="font-size: 11px; color: var(--text-tertiary); font-weight: normal;">v${model.version}</span>
-              ${isActive ? `<span class="badge active-badge">Active ●</span>` : (isInstalled ? `<span class="badge">Installed</span>` : '')}
-            </div>
-            <div class="model-desc">${model.description}</div>
+      <div class="model-list-row ${isActive ? 'is-active' : ''}">
+        <div class="model-badge-icon">${langCode}</div>
+
+        <div class="model-primary-info">
+          <div class="model-title-line">
+            <span class="model-name">${model.name}</span>
+            <span class="model-version">v${model.version}</span>
+            ${isActive ? `<span class="active-pill">Active</span>` : ''}
           </div>
-          <button class="btn btn-secondary btn-sm" data-action="details" data-model-id="${model.id}">Details</button>
+          <div class="model-summary-desc">${model.description}</div>
         </div>
 
-        <!-- Specs row -->
-        <div class="model-specs-grid">
-          <div class="spec-cell">
-            <span class="spec-label">Language</span>
-            <span class="spec-val">${model.languages[0] || 'Nepali'}</span>
-          </div>
-          <div class="spec-cell">
-            <span class="spec-label">Parameters</span>
-            <span class="spec-val">${paramStr}</span>
-          </div>
-          <div class="spec-cell">
-            <span class="spec-label">Size</span>
-            <span class="spec-val">${mbSize}</span>
-          </div>
-          <div class="spec-cell">
-            <span class="spec-label">Runtime</span>
-            <span class="spec-val">${model.runtime}</span>
-          </div>
-          <div class="spec-cell">
-            <span class="spec-label">Platform</span>
-            <span class="spec-val">Apple Silicon ✓</span>
-          </div>
+        <div class="model-tech-specs">
+          <span class="tech-tag">${paramStr}</span>
+          <span class="tech-tag">${mbSize}</span>
+          <span class="tech-tag">${model.runtime}</span>
         </div>
 
-        <!-- Performance summary -->
-        <div class="perf-row">
-          <div class="perf-meter">
-            <span>Accuracy:</span>
-            <div class="perf-bars">
-              ${this.renderPerfBars(model.performance?.accuracy || 90)}
-            </div>
-          </div>
-          <div class="perf-meter">
-            <span>Speed:</span>
-            <div class="perf-bars">
-              ${this.renderPerfBars(model.performance?.speed || 90)}
-            </div>
-          </div>
-          <div class="perf-meter">
-            <span>Memory:</span>
-            <div class="perf-bars">
-              ${this.renderPerfBars(model.performance?.memory || 80)}
-            </div>
-          </div>
-        </div>
-
-        <!-- Download progress bar if active -->
-        ${isDownloading ? `
-          <div class="download-progress-container">
-            <div class="download-progress-header">
-              <span>Downloading ${model.name}...</span>
-              <span>${model.downloadProgress?.percentage || 0}%</span>
-            </div>
-            <div class="download-track">
-              <div class="download-fill" style="width: ${model.downloadProgress?.percentage || 0}%;"></div>
-            </div>
-            <div class="download-footer">
-              <span>${model.downloadProgress?.downloadedBytes ? (model.downloadProgress.downloadedBytes / (1024 * 1024)).toFixed(0) : '0'} MB / ${mbSize}</span>
-              <span>2.4 MB/s</span>
-            </div>
-          </div>
-        ` : ''}
-
-        ${isVerifying ? `
-          <div style="font-size: 12px; color: var(--accent); padding: 6px 0;">
-            ✓ Verifying model checksum...
-          </div>
-        ` : ''}
-
-        ${isInstalling ? `
-          <div style="font-size: 12px; color: var(--accent); padding: 6px 0;">
-            Installing model into local cache...
-          </div>
-        ` : ''}
-
-        <!-- Actions -->
-        <div class="card-action-bar">
+        <div class="model-actions">
           ${isDownloading ? `
-            <button class="btn btn-secondary btn-sm" data-action="cancel-download" data-model-id="${model.id}">Cancel Download</button>
+            <div class="mini-progress-box">
+              <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-tertiary);">
+                <span>Downloading...</span>
+                <span>${model.downloadProgress?.percentage || 0}%</span>
+              </div>
+              <div class="mini-progress-bar">
+                <div class="mini-progress-fill" style="width: ${model.downloadProgress?.percentage || 0}%;"></div>
+              </div>
+            </div>
+            <button class="mac-btn mac-btn-default" data-model-action="cancel" data-model-id="${model.id}">Cancel</button>
+          ` : (isVerifying ? `
+            <span style="font-size: 11px; color: var(--accent);">Verifying checksum...</span>
+          ` : (isInstalling ? `
+            <span style="font-size: 11px; color: var(--accent);">Installing...</span>
           ` : (isActive ? `
-            <span style="font-size: 12px; color: var(--success); margin-right: auto;">Currently active model</span>
+            <button class="mac-btn mac-btn-default" data-model-action="inspect" data-model-id="${model.id}">Inspect</button>
           ` : (isInstalled ? `
-            <button class="btn btn-danger btn-sm" data-action="remove" data-model-id="${model.id}">Remove</button>
-            <button class="btn btn-primary btn-sm" data-action="activate" data-model-id="${model.id}">Use Model</button>
+            <button class="mac-btn mac-btn-default" data-model-action="inspect" data-model-id="${model.id}">Inspect</button>
+            <button class="mac-btn mac-btn-primary" data-model-action="activate" data-model-id="${model.id}">Use Model</button>
           ` : `
-            <button class="btn btn-primary btn-sm" data-action="download" data-model-id="${model.id}">Download Model</button>
-          `))}
+            <button class="mac-btn mac-btn-default" data-model-action="inspect" data-model-id="${model.id}">Inspect</button>
+            <button class="mac-btn mac-btn-primary" data-model-action="download" data-model-id="${model.id}">Download</button>
+          `))))}
         </div>
       </div>
     `;
   }
 
-  renderPerfBars(val) {
-    // 5 bars
-    const score = Math.round((val / 100) * 5);
-    let html = '';
-    for (let i = 1; i <= 5; i++) {
-      html += `<div class="perf-bar ${i <= score ? 'filled' : ''}"></div>`;
-    }
-    return html;
-  }
-
-  /* ---------------- MODEL DETAIL MODAL ---------------- */
-  openModelDetailModal(model) {
+  /* ---------------- MODEL DETAIL SHEET ---------------- */
+  openModelDetailSheet(model) {
     this.activeDetailModel = model;
     let modal = document.getElementById('model-detail-modal');
     if (!modal) {
@@ -596,63 +448,57 @@ class VoiceKeyApp {
     const isActive = model.status === 'active';
     const isInstalled = model.status === 'installed' || isActive;
     const mbSize = model.downloadSize ? (model.downloadSize / (1024 * 1024)).toFixed(0) + ' MB' : '480 MB';
+    const paramStr = model.parameters
+      ? (model.parameters >= 1000000000 ? (model.parameters / 1000000000).toFixed(1) + 'B' : Math.round(model.parameters / 1000000) + 'M')
+      : '119M';
 
     modal.innerHTML = `
-      <div class="modal-dialog">
-        <div class="modal-header">
+      <div class="modal-sheet">
+        <div class="sheet-header">
           <div>
-            <div class="modal-title">${model.name}</div>
-            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${model.task} • v${model.version}</div>
+            <div class="sheet-title">${model.name}</div>
+            <div style="font-size: 11px; color: var(--text-tertiary);">${model.task} • v${model.version}</div>
           </div>
-          <button class="modal-close-btn" id="btn-close-detail">&times;</button>
+          <button class="sheet-close-btn" id="btn-close-sheet">&times;</button>
         </div>
 
-        <div class="modal-body">
-          <p style="font-size: 13px; color: var(--text-primary); margin-bottom: 16px; line-height: 1.5;">
+        <div class="sheet-body">
+          <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
             ${model.description}
           </p>
 
-          <div class="section-title">Specifications</div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; font-size: 12px;">
-            <div><span style="color: var(--text-tertiary);">Languages:</span> <strong>${model.languages.join(', ')}</strong></div>
-            <div><span style="color: var(--text-tertiary);">Parameters:</span> <strong>${model.parameters ? (model.parameters / 1000000).toFixed(0) + 'M' : 'N/A'}</strong></div>
-            <div><span style="color: var(--text-tertiary);">Download Size:</span> <strong>${mbSize}</strong></div>
-            <div><span style="color: var(--text-tertiary);">Runtime:</span> <strong>${model.runtime}</strong></div>
-            <div><span style="color: var(--text-tertiary);">Developer:</span> <strong>${model.developer}</strong></div>
-            <div><span style="color: var(--text-tertiary);">License:</span> <strong>${model.license}</strong></div>
+          <div class="grouped-section">
+            <div class="grouped-section-title">Technical Specifications</div>
+            <div class="inset-group">
+              <div class="group-row"><span class="row-subtitle">Languages</span><strong>${model.languages.join(', ')}</strong></div>
+              <div class="group-row"><span class="row-subtitle">Parameters</span><strong>${paramStr}</strong></div>
+              <div class="group-row"><span class="row-subtitle">Disk Footprint</span><strong>${mbSize}</strong></div>
+              <div class="group-row"><span class="row-subtitle">Runtime Engine</span><strong>${model.runtime}</strong></div>
+              <div class="group-row"><span class="row-subtitle">Developer</span><strong>${model.developer}</strong></div>
+              <div class="group-row"><span class="row-subtitle">License</span><strong>${model.license}</strong></div>
+            </div>
           </div>
 
-          <div class="section-title">Capabilities</div>
-          <div style="display: flex; gap: 16px; margin-bottom: 18px; font-size: 12px;">
-            <div>${model.capabilities.streaming ? '✓' : '✗'} Streaming</div>
-            <div>${model.capabilities.offline ? '✓' : '✗'} 100% Offline</div>
-            <div>${model.capabilities.punctuation ? '✓' : '✗'} Auto-Punctuation</div>
-          </div>
-
-          <div class="section-title">Hardware Compatibility</div>
-          <div style="margin-bottom: 18px; font-size: 12px; display: flex; flex-direction: column; gap: 4px;">
-            <div>✓ Apple Silicon native optimization</div>
-            <div>✓ Minimum RAM: ${model.compatibility.minimumRam} GB</div>
-            <div>✓ Requires: macOS ${model.compatibility.minimumMacOS}+</div>
-          </div>
-
-          <div class="section-title">Performance Metrics</div>
-          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12px;">
-            <div>Accuracy score: <strong>${model.performance?.accuracy || 90}%</strong></div>
-            <div>Inference speed score: <strong>${model.performance?.speed || 90}%</strong></div>
-            <div>Memory efficiency score: <strong>${model.performance?.memory || 80}%</strong></div>
+          <div class="grouped-section">
+            <div class="grouped-section-title">Capabilities & Requirements</div>
+            <div class="inset-group">
+              <div class="group-row"><span class="row-subtitle">Streaming Voice VAD</span><strong>${model.capabilities.streaming ? 'Supported ✓' : 'File / Batch Only'}</strong></div>
+              <div class="group-row"><span class="row-subtitle">On-Device Offline</span><strong>Supported ✓</strong></div>
+              <div class="group-row"><span class="row-subtitle">Apple Silicon</span><strong>Optimized ✓</strong></div>
+              <div class="group-row"><span class="row-subtitle">Minimum Memory</span><strong>${model.compatibility.minimumRam} GB RAM</strong></div>
+            </div>
           </div>
         </div>
 
-        <div class="modal-footer">
-          ${model.sourceUrl ? `<a href="${model.sourceUrl}" target="_blank" class="btn btn-secondary btn-sm" style="margin-right: auto; text-decoration: none;">Source / Model Card ↗</a>` : ''}
+        <div class="sheet-footer">
+          ${model.sourceUrl ? `<a href="${model.sourceUrl}" target="_blank" class="mac-btn mac-btn-default" style="margin-right: auto; text-decoration: none;">Hugging Face ↗</a>` : ''}
           ${isActive ? `
-            <span style="font-size: 12px; color: var(--success);">Active Model</span>
+            <span style="font-size: 12px; color: var(--success); font-weight: 500;">Currently Active Model</span>
           ` : (isInstalled ? `
-            <button class="btn btn-danger btn-sm" id="detail-btn-remove">Remove Model</button>
-            <button class="btn btn-primary btn-sm" id="detail-btn-use">Use Model</button>
+            <button class="mac-btn mac-btn-danger" id="sheet-btn-remove">Remove Model</button>
+            <button class="mac-btn mac-btn-primary" id="sheet-btn-use">Use Model</button>
           ` : `
-            <button class="btn btn-primary btn-sm" id="detail-btn-download">Download Model</button>
+            <button class="mac-btn mac-btn-primary" id="sheet-btn-download">Download Model</button>
           `)}
         </div>
       </div>
@@ -660,23 +506,18 @@ class VoiceKeyApp {
 
     modal.classList.add('open');
 
-    modal.querySelector('#btn-close-detail')?.addEventListener('click', () => {
-      modal.classList.remove('open');
-    });
-
-    modal.querySelector('#detail-btn-use')?.addEventListener('click', async () => {
+    modal.querySelector('#btn-close-sheet')?.addEventListener('click', () => modal.classList.remove('open'));
+    modal.querySelector('#sheet-btn-use')?.addEventListener('click', async () => {
       await modelService.activateModel(model.id);
-      this.showToast(`Activated ${model.name}`);
+      this.showToast(`Active model set to ${model.name}`);
       modal.classList.remove('open');
     });
-
-    modal.querySelector('#detail-btn-download')?.addEventListener('click', async () => {
+    modal.querySelector('#sheet-btn-download')?.addEventListener('click', async () => {
       await modelService.downloadModel(model.id);
       this.showToast(`Downloading ${model.name}...`);
       modal.classList.remove('open');
     });
-
-    modal.querySelector('#detail-btn-remove')?.addEventListener('click', async () => {
+    modal.querySelector('#sheet-btn-remove')?.addEventListener('click', async () => {
       if (confirm(`Remove ${model.name}?`)) {
         await modelService.removeModel(model.id);
         this.showToast(`Removed ${model.name}`);
@@ -691,65 +532,41 @@ class VoiceKeyApp {
     const s = this.settings || {};
 
     container.innerHTML = `
-      <div class="page-header">
-        <h1 class="page-title">Settings</h1>
-        <p class="page-subtitle">Configure system behavior, global hotkeys, audio inputs, and privacy.</p>
-      </div>
-
-      <!-- General Section -->
-      <div class="section-block">
-        <div class="section-title">General</div>
-        <div class="settings-group">
-          <div class="settings-row">
-            <div class="settings-info">
-              <div class="settings-label">Launch VoiceKey at login</div>
-              <div class="settings-sublabel">Start background listening daemon when you log in</div>
+      <div class="grouped-section">
+        <div class="grouped-section-title">Application</div>
+        <div class="inset-group">
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">Launch at Login</div>
+              <div class="row-subtitle">Start background helper daemon when you log into macOS</div>
             </div>
-            <label class="toggle-switch">
+            <label class="mac-switch">
               <input type="checkbox" id="set-launch-login" ${s.launch_at_login ? 'checked' : ''}>
-              <span class="toggle-slider"></span>
+              <span class="switch-slider"></span>
             </label>
           </div>
-
-          <div class="settings-row">
-            <div class="settings-info">
-              <div class="settings-label">Show menu bar icon</div>
-              <div class="settings-sublabel">Display status indicator in macOS top menu bar</div>
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">Show Menu Bar Icon</div>
+              <div class="row-subtitle">Display VoiceKey icon in macOS system status bar</div>
             </div>
-            <label class="toggle-switch">
+            <label class="mac-switch">
               <input type="checkbox" id="set-show-menu-bar" ${s.show_menu_bar_icon !== false ? 'checked' : ''}>
-              <span class="toggle-slider"></span>
+              <span class="switch-slider"></span>
             </label>
           </div>
         </div>
       </div>
 
-      <!-- Shortcut Section -->
-      <div class="section-block">
-        <div class="section-title">Global Shortcut</div>
-        <div class="settings-group">
-          <div class="settings-row">
-            <div class="settings-info">
-              <div class="settings-label">Dictation Toggle Shortcut</div>
-              <div class="settings-sublabel">Press anywhere in any macOS app to start or stop listening</div>
+      <div class="grouped-section">
+        <div class="grouped-section-title">Audio Hardware</div>
+        <div class="inset-group">
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">Input Microphone</div>
+              <div class="row-subtitle">Select recording audio interface</div>
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="kbd">⌥ Space</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Audio Section -->
-      <div class="section-block">
-        <div class="section-title">Audio & Microphone</div>
-        <div class="settings-group">
-          <div class="settings-row">
-            <div class="settings-info">
-              <div class="settings-label">Microphone Input Device</div>
-              <div class="settings-sublabel">Select the active microphone for voice recording</div>
-            </div>
-            <select class="select-input" id="set-mic-select">
+            <select class="mac-select" id="set-mic-select">
               ${this.audioDevices.map(d => `
                 <option value="${d.name}" ${d.is_default ? 'selected' : ''}>${d.name}</option>
               `).join('')}
@@ -758,83 +575,60 @@ class VoiceKeyApp {
         </div>
       </div>
 
-      <!-- Text Processing Section -->
-      <div class="section-block">
-        <div class="section-title">Text Processing & Normalization</div>
-        <div class="settings-group">
-          <div class="settings-row">
-            <div class="settings-info">
-              <div class="settings-label">Automatic Nepali Punctuation (Danda ।)</div>
-              <div class="settings-sublabel">Ensure proper terminal Danda on complete sentences</div>
+      <div class="grouped-section">
+        <div class="grouped-section-title">Nepali Text Processing</div>
+        <div class="inset-group">
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">Automatic Punctuation (Danda ।)</div>
+              <div class="row-subtitle">Append standard Devanagari sentence terminator</div>
             </div>
-            <label class="toggle-switch">
+            <label class="mac-switch">
               <input type="checkbox" id="set-auto-punct" ${s.auto_punctuation !== false ? 'checked' : ''}>
-              <span class="toggle-slider"></span>
+              <span class="switch-slider"></span>
             </label>
           </div>
-
-          <div class="settings-row">
-            <div class="settings-info">
-              <div class="settings-label">Devanagari Numerals (०-९)</div>
-              <div class="settings-sublabel">Convert ASCII digits to Devanagari numerals</div>
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">Devanagari Numerals (०-९)</div>
+              <div class="row-subtitle">Transcribe numbers in native numerals</div>
             </div>
-            <label class="toggle-switch">
+            <label class="mac-switch">
               <input type="checkbox" id="set-norm-numbers" ${s.normalize_numbers !== false ? 'checked' : ''}>
-              <span class="toggle-slider"></span>
+              <span class="switch-slider"></span>
             </label>
           </div>
-
-          <div class="settings-row">
-            <div class="settings-info">
-              <div class="settings-label">Smart Whitespace Formatting</div>
-              <div class="settings-sublabel">Insert clean spacing between continuous utterances</div>
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">Smart Whitespace</div>
+              <div class="row-subtitle">Ensure clean space separation between paused phrases</div>
             </div>
-            <label class="toggle-switch">
+            <label class="mac-switch">
               <input type="checkbox" id="set-smart-whitespace" ${s.smart_whitespace !== false ? 'checked' : ''}>
-              <span class="toggle-slider"></span>
+              <span class="switch-slider"></span>
             </label>
           </div>
         </div>
       </div>
 
-      <!-- Privacy Section -->
-      <div class="section-block">
-        <div class="section-title">Privacy & Local Storage</div>
-        <div class="settings-group">
-          <div class="settings-row">
-            <div class="settings-info">
-              <div class="settings-label">Process Audio 100% Locally</div>
-              <div class="settings-sublabel">No speech data ever leaves your Mac</div>
+      <div class="grouped-section">
+        <div class="grouped-section-title">Privacy & Local Storage</div>
+        <div class="inset-group">
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">Enable Local History</div>
+              <div class="row-subtitle">Store past dictations privately on disk</div>
             </div>
-            <span style="font-size: 12px; color: var(--success); font-weight: 600;">✓ Local Only</span>
-          </div>
-
-          <div class="settings-row">
-            <div class="settings-info">
-              <div class="settings-label">Save Audio Recordings</div>
-              <div class="settings-sublabel">Retain temporary WAV audio files on disk (disabled for privacy)</div>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="set-save-audio" ${s.save_audio ? 'checked' : ''}>
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-
-          <div class="settings-row">
-            <div class="settings-info">
-              <div class="settings-label">Enable Transcription History</div>
-              <div class="settings-sublabel">Store past text transcripts locally for easy copying</div>
-            </div>
-            <label class="toggle-switch">
+            <label class="mac-switch">
               <input type="checkbox" id="set-enable-history" ${historyService.isEnabled() ? 'checked' : ''}>
-              <span class="toggle-slider"></span>
+              <span class="switch-slider"></span>
             </label>
           </div>
         </div>
       </div>
 
-      <div style="display: flex; justify-content: flex-end;">
-        <button id="btn-save-settings" class="btn btn-primary">Save Settings</button>
+      <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+        <button id="btn-save-settings" class="mac-btn mac-btn-primary">Apply Changes</button>
       </div>
     `;
 
@@ -844,14 +638,13 @@ class VoiceKeyApp {
       this.settings.auto_punctuation = document.getElementById('set-auto-punct').checked;
       this.settings.normalize_numbers = document.getElementById('set-norm-numbers').checked;
       this.settings.smart_whitespace = document.getElementById('set-smart-whitespace').checked;
-      this.settings.save_audio = document.getElementById('set-save-audio').checked;
 
-      const historyEnabled = document.getElementById('set-enable-history').checked;
-      historyService.setEnabled(historyEnabled);
-      this.settings.enable_history = historyEnabled;
+      const hist = document.getElementById('set-enable-history').checked;
+      historyService.setEnabled(hist);
+      this.settings.enable_history = hist;
 
       await tauriService.saveSettings(this.settings);
-      this.showToast('Settings saved successfully');
+      this.showToast('Settings saved');
     });
   }
 
@@ -862,23 +655,15 @@ class VoiceKeyApp {
 
     if (!enabled) {
       container.innerHTML = `
-        <div class="page-header">
-          <h1 class="page-title">History</h1>
-          <p class="page-subtitle">Transcription history is disabled by default for privacy.</p>
-        </div>
-
-        <div class="empty-state">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-          <h4>History is disabled</h4>
-          <p>VoiceKey does not record or store your transcriptions anywhere on your device or the cloud.</p>
-          <button id="btn-enable-hist" class="btn btn-primary">Enable Local History</button>
+        <div style="text-align: center; padding: 48px 16px; color: var(--text-tertiary);">
+          <div style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">History is disabled</div>
+          <div style="font-size: 12px; margin-bottom: 16px;">VoiceKey does not record or store your dictations.</div>
+          <button id="btn-turn-on-hist" class="mac-btn mac-btn-primary">Enable Local History</button>
         </div>
       `;
-
-      document.getElementById('btn-enable-hist')?.addEventListener('click', () => {
+      document.getElementById('btn-turn-on-hist')?.addEventListener('click', () => {
         historyService.setEnabled(true);
         this.renderHistory();
-        this.showToast('Local history enabled');
       });
       return;
     }
@@ -886,51 +671,53 @@ class VoiceKeyApp {
     const grouped = historyService.getGroupedEntries();
     const groupKeys = Object.keys(grouped);
 
-    container.innerHTML = `
-      <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
-        <div>
-          <h1 class="page-title">History</h1>
-          <p class="page-subtitle">Local transcriptions stored privately on your Mac.</p>
+    if (groupKeys.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 48px 16px; color: var(--text-tertiary);">
+          <div style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">No history records</div>
+          <div style="font-size: 12px;">Dictate text with ⌥ Space to see past entries here.</div>
         </div>
-        ${groupKeys.length > 0 ? `<button id="btn-clear-history" class="btn btn-danger btn-sm">Clear History</button>` : ''}
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+        <button id="btn-clear-all-hist" class="mac-btn mac-btn-danger">Clear All History</button>
       </div>
 
-      ${groupKeys.length === 0 ? `
-        <div class="empty-state">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-          <h4>No transcription history yet</h4>
-          <p>Transcribed phrases will appear here as you speak.</p>
-        </div>
-      ` : groupKeys.map(groupName => `
-        <div class="history-group">
-          <div class="history-date-label">${groupName}</div>
-          ${grouped[groupName].map(item => `
-            <div class="history-card" data-id="${item.id}">
-              <div class="history-card-header">
-                <div>${new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • ${item.modelName}</div>
-                <div style="display: flex; gap: 8px;">
-                  <button class="btn btn-secondary btn-sm" data-copy-id="${item.id}">Copy</button>
-                  <button class="btn btn-danger btn-sm" data-del-id="${item.id}">Delete</button>
+      ${groupKeys.map(groupName => `
+        <div class="grouped-section">
+          <div class="grouped-section-title">${groupName}</div>
+          <div class="inset-group">
+            ${grouped[groupName].map(item => `
+              <div class="group-row">
+                <div class="row-left">
+                  <div class="row-title" style="font-weight: 400; font-size: 13px;">${item.text}</div>
+                  <div class="row-subtitle">
+                    ${new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • ${item.modelName}
+                  </div>
+                </div>
+                <div class="row-right">
+                  <button class="mac-btn mac-btn-default" data-copy-id="${item.id}">Copy</button>
+                  <button class="mac-btn mac-btn-danger" data-del-id="${item.id}">Delete</button>
                 </div>
               </div>
-              <div class="history-snippet">${item.text}</div>
-            </div>
-          `).join('')}
+            `).join('')}
+          </div>
         </div>
       `).join('')}
     `;
 
-    document.getElementById('btn-clear-history')?.addEventListener('click', () => {
-      if (confirm('Clear all transcription history?')) {
+    document.getElementById('btn-clear-all-hist')?.addEventListener('click', () => {
+      if (confirm('Clear all history?')) {
         historyService.clearAll();
         this.renderHistory();
-        this.showToast('History cleared');
       }
     });
 
     container.querySelectorAll('[data-copy-id]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
+      btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-copy-id');
         const entry = historyService.getEntries().find(x => x.id === id);
         if (entry) {
@@ -941,8 +728,7 @@ class VoiceKeyApp {
     });
 
     container.querySelectorAll('[data-del-id]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
+      btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-del-id');
         historyService.deleteEntry(id);
         this.renderHistory();
@@ -954,43 +740,46 @@ class VoiceKeyApp {
   renderAbout() {
     const container = document.getElementById('content-body');
     container.innerHTML = `
-      <div class="page-header">
-        <h1 class="page-title">About VoiceKey</h1>
-        <p class="page-subtitle">Speak. Type. Done.</p>
+      <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
+        <img src="icon.png" class="brand-app-icon" style="width: 56px; height: 56px; border-radius: 12px;" alt="VoiceKey Icon" />
+        <div>
+          <div style="font-size: 18px; font-weight: 600; color: var(--text-primary);">VoiceKey</div>
+          <div style="font-size: 12px; color: var(--text-tertiary);">Version 0.1.0 • Apple Silicon Native</div>
+        </div>
       </div>
 
-      <div class="card" style="margin-bottom: 20px;">
-        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
-          <div class="brand-icon" style="width: 44px; height: 44px; border-radius: 12px;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
-          </div>
-          <div>
-            <div style="font-size: 18px; font-weight: 600; color: var(--text-primary);">VoiceKey Platform</div>
-            <div style="font-size: 12px; color: var(--text-secondary);">Native Apple Silicon Speech Platform • Version 0.1.0</div>
+      <div class="grouped-section">
+        <div class="grouped-section-title">Product</div>
+        <div class="inset-group">
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">Speak. Type. Done.</div>
+              <div class="row-subtitle">Model-agnostic native macOS voice platform. Choose the speech model that works best for your Mac.</div>
+            </div>
           </div>
         </div>
+      </div>
 
-        <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px;">
-          VoiceKey is a privacy-first, model-agnostic voice AI typing utility designed specifically for macOS.
-          It gives you full freedom to choose, download, and execute cutting-edge speech recognition models
-          entirely offline without vendor lock-in.
-        </p>
-
-        <div style="display: flex; gap: 10px;">
-          <button id="btn-replay-onboarding" class="btn btn-secondary btn-sm">Replay Onboarding Guide</button>
-          <a href="https://github.com/theanix/voicekey" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration: none;">GitHub Repository ↗</a>
+      <div class="grouped-section">
+        <div class="grouped-section-title">Open Source & Community</div>
+        <div class="inset-group">
+          <div class="group-row">
+            <div class="row-left">
+              <div class="row-title">GitHub Project</div>
+              <div class="row-subtitle">Source code, model weights, and release notes</div>
+            </div>
+            <div class="row-right">
+              <a href="https://github.com/theanix/voicekey" target="_blank" class="mac-btn mac-btn-default" style="text-decoration: none;">View on GitHub ↗</a>
+            </div>
+          </div>
         </div>
       </div>
     `;
-
-    document.getElementById('btn-replay-onboarding')?.addEventListener('click', () => {
-      this.openOnboarding();
-    });
   }
 
   /* ---------------- COMMAND PALETTE ---------------- */
   toggleCommandPalette() {
-    const modal = document.getElementById('cmd-palette-modal');
+    const modal = document.getElementById('cmd-box-modal');
     if (modal && modal.classList.contains('open')) {
       this.closeAllModals();
     } else {
@@ -999,37 +788,33 @@ class VoiceKeyApp {
   }
 
   openCommandPalette() {
-    let modal = document.getElementById('cmd-palette-modal');
+    let modal = document.getElementById('cmd-box-modal');
     if (!modal) {
       modal = document.createElement('div');
-      modal.id = 'cmd-palette-modal';
+      modal.id = 'cmd-box-modal';
       modal.className = 'modal-overlay';
       document.body.appendChild(modal);
     }
 
     const commands = [
-      { id: 'toggle', label: '🎙 Start / Stop Listening', hint: '⌥ Space', action: () => tauriService.startListening() },
-      { id: 'models', label: '🧠 Browse Speech Models', hint: '⌘ 2', action: () => this.switchView('models') },
-      { id: 'overview', label: '📊 Open Overview Dashboard', hint: '⌘ 1', action: () => this.switchView('overview') },
-      { id: 'history', label: '📋 View Transcription History', hint: '⌘ 3', action: () => this.switchView('history') },
-      { id: 'settings', label: '⚙ Open Settings', hint: '⌘ ,', action: () => this.switchView('settings') },
-      { id: 'copy-last', label: '📄 Copy Last Transcription', hint: 'Enter', action: () => {
-        const last = historyService.getEntries()[0];
-        if (last) { navigator.clipboard.writeText(last.text); this.showToast('Copied last transcription'); }
-      }}
+      { id: 'dictate', label: 'Toggle Voice Dictation', hint: '⌥ Space', action: () => tauriService.startListening() },
+      { id: 'models', label: 'Open Speech Models', hint: '⌘ 2', action: () => this.switchView('models') },
+      { id: 'overview', label: 'Go to Overview', hint: '⌘ 1', action: () => this.switchView('overview') },
+      { id: 'history', label: 'Open History', hint: '⌘ 3', action: () => this.switchView('history') },
+      { id: 'settings', label: 'Open Settings', hint: '⌘ ,', action: () => this.switchView('settings') },
     ];
 
     modal.innerHTML = `
-      <div class="cmd-palette">
-        <div class="cmd-input-row">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input id="cmd-input" class="cmd-input" type="text" placeholder="Type a command or search..." autofocus>
+      <div class="cmd-box">
+        <div class="cmd-input-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input id="cmd-query-input" class="cmd-input-field" type="text" placeholder="Type a command..." autofocus>
         </div>
-        <div class="cmd-results" id="cmd-results-list">
-          ${commands.map((cmd, i) => `
-            <div class="cmd-item ${i === 0 ? 'selected' : ''}" data-cmd-index="${i}">
-              <span>${cmd.label}</span>
-              <span class="kbd">${cmd.hint}</span>
+        <div class="cmd-list" id="cmd-list-rows">
+          ${commands.map((c, i) => `
+            <div class="cmd-row ${i === 0 ? 'selected' : ''}" data-cmd-i="${i}">
+              <span>${c.label}</span>
+              <span class="kbd">${c.hint}</span>
             </div>
           `).join('')}
         </div>
@@ -1037,25 +822,25 @@ class VoiceKeyApp {
     `;
 
     modal.classList.add('open');
-    const input = modal.querySelector('#cmd-input');
+    const input = modal.querySelector('#cmd-query-input');
     if (input) input.focus();
 
     let filtered = [...commands];
     this.cmdSelectedIndex = 0;
 
-    const renderList = () => {
-      const list = modal.querySelector('#cmd-results-list');
-      if (!list) return;
-      list.innerHTML = filtered.map((cmd, i) => `
-        <div class="cmd-item ${i === this.cmdSelectedIndex ? 'selected' : ''}" data-cmd-index="${i}">
-          <span>${cmd.label}</span>
-          <span class="kbd">${cmd.hint}</span>
+    const renderCmds = () => {
+      const listEl = modal.querySelector('#cmd-list-rows');
+      if (!listEl) return;
+      listEl.innerHTML = filtered.map((c, i) => `
+        <div class="cmd-row ${i === this.cmdSelectedIndex ? 'selected' : ''}" data-cmd-i="${i}">
+          <span>${c.label}</span>
+          <span class="kbd">${c.hint}</span>
         </div>
       `).join('');
 
-      list.querySelectorAll('.cmd-item').forEach(el => {
-        el.addEventListener('click', () => {
-          const idx = Number(el.getAttribute('data-cmd-index'));
+      listEl.querySelectorAll('.cmd-row').forEach(row => {
+        row.addEventListener('click', () => {
+          const idx = Number(row.getAttribute('data-cmd-i'));
           filtered[idx]?.action();
           this.closeAllModals();
         });
@@ -1066,18 +851,18 @@ class VoiceKeyApp {
       const q = e.target.value.toLowerCase();
       filtered = commands.filter(c => c.label.toLowerCase().includes(q));
       this.cmdSelectedIndex = 0;
-      renderList();
+      renderCmds();
     });
 
     input?.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         this.cmdSelectedIndex = (this.cmdSelectedIndex + 1) % Math.max(1, filtered.length);
-        renderList();
+        renderCmds();
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         this.cmdSelectedIndex = (this.cmdSelectedIndex - 1 + filtered.length) % Math.max(1, filtered.length);
-        renderList();
+        renderCmds();
       } else if (e.key === 'Enter') {
         e.preventDefault();
         if (filtered[this.cmdSelectedIndex]) {
@@ -1087,126 +872,7 @@ class VoiceKeyApp {
       }
     });
 
-    renderList();
-  }
-
-  /* ---------------- ONBOARDING WIZARD ---------------- */
-  openOnboarding() {
-    let modal = document.getElementById('onboarding-modal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'onboarding-modal';
-      modal.className = 'modal-overlay';
-      document.body.appendChild(modal);
-    }
-
-    let step = 1;
-
-    const renderStep = () => {
-      let content = '';
-      if (step === 1) {
-        content = `
-          <div style="text-align: center; padding: 20px 10px;">
-            <div class="brand-icon" style="width: 52px; height: 52px; margin: 0 auto 16px auto; border-radius: 14px;">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
-            </div>
-            <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 6px;">VoiceKey</h2>
-            <div style="font-size: 14px; font-weight: 500; color: var(--accent); margin-bottom: 12px;">Speak. Type. Done.</div>
-            <p style="font-size: 13px; color: var(--text-secondary); max-width: 360px; margin: 0 auto 24px auto; line-height: 1.5;">
-              Native, private voice typing for macOS that lets you run speech models directly on your Mac.
-            </p>
-            <button id="onb-next" class="btn btn-primary" style="min-width: 140px;">Get Started</button>
-          </div>
-        `;
-      } else if (step === 2) {
-        content = `
-          <div style="padding: 10px;">
-            <h3 style="font-size: 18px; margin-bottom: 8px;">Microphone Access</h3>
-            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5;">
-              VoiceKey needs access to your microphone to transcribe speech. All audio is processed locally on Apple Silicon and is never uploaded.
-            </p>
-            <div class="card" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
-              <span>Microphone Status</span>
-              <span class="badge active-badge">Ready / Allowed</span>
-            </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px;">
-              <button id="onb-next" class="btn btn-primary">Continue</button>
-            </div>
-          </div>
-        `;
-      } else if (step === 3) {
-        content = `
-          <div style="padding: 10px;">
-            <h3 style="font-size: 18px; margin-bottom: 8px;">Accessibility Permission</h3>
-            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5;">
-              To type transcribed words directly at your cursor into any macOS application (Slack, Safari, Cursor, Mail), VoiceKey uses macOS Accessibility.
-            </p>
-            <div class="card" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
-              <span>Accessibility Integration</span>
-              <button class="btn btn-secondary btn-sm" id="btn-grant-ax">Check / Grant Access</button>
-            </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px;">
-              <button id="onb-next" class="btn btn-primary">Continue</button>
-            </div>
-          </div>
-        `;
-      } else if (step === 4) {
-        content = `
-          <div style="padding: 10px;">
-            <h3 style="font-size: 18px; margin-bottom: 8px;">Default Speech Model</h3>
-            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
-              VoiceKey is model-agnostic. We have pre-configured <strong>Kriti</strong> (119M Nepali ASR) as your initial active model.
-            </p>
-            <div class="card" style="margin-bottom: 20px;">
-              <div style="font-weight: 600; font-size: 15px;">Kriti (Nepali Speech Recognition)</div>
-              <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">119M parameters • Optimized for Apple Silicon • 100% Offline</div>
-            </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px;">
-              <button id="onb-next" class="btn btn-primary">Continue</button>
-            </div>
-          </div>
-        `;
-      } else if (step === 5) {
-        content = `
-          <div style="text-align: center; padding: 20px 10px;">
-            <div style="font-size: 32px; margin-bottom: 12px;">🎉</div>
-            <h3 style="font-size: 18px; margin-bottom: 8px;">You're Ready</h3>
-            <p style="font-size: 13px; color: var(--text-secondary); max-width: 360px; margin: 0 auto 20px auto; line-height: 1.5;">
-              Press the global shortcut anytime to start dictating:
-            </p>
-            <div style="margin-bottom: 24px;">
-              <span class="kbd" style="font-size: 15px; padding: 6px 14px;">⌥ Space</span>
-            </div>
-            <button id="onb-finish" class="btn btn-primary" style="min-width: 140px;">Finish Setup</button>
-          </div>
-        `;
-      }
-
-      modal.innerHTML = `
-        <div class="modal-dialog" style="max-width: 480px;">
-          <div class="modal-body">${content}</div>
-        </div>
-      `;
-
-      modal.querySelector('#onb-next')?.addEventListener('click', () => {
-        step++;
-        renderStep();
-      });
-
-      modal.querySelector('#btn-grant-ax')?.addEventListener('click', async () => {
-        await tauriService.requestPermissions();
-        this.showToast('Accessibility requested');
-      });
-
-      modal.querySelector('#onb-finish')?.addEventListener('click', () => {
-        localStorage.setItem('voicekey_onboarded', 'true');
-        modal.classList.remove('open');
-        this.showToast('Setup complete! Press ⌥ Space to dictate.');
-      });
-    };
-
-    renderStep();
-    modal.classList.add('open');
+    renderCmds();
   }
 
   closeAllModals() {
@@ -1214,7 +880,6 @@ class VoiceKeyApp {
   }
 }
 
-// Initialize on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
   const app = new VoiceKeyApp();
   app.init();
