@@ -10,6 +10,7 @@
       margin: 0;
       padding: 0;
       user-select: none;
+      -webkit-user-select: none;
     }
     html, body {
       width: 100%;
@@ -21,133 +22,237 @@
       justify-content: center;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
     }
+
+    /* Draggable macOS Dynamic Island / Siri style pill */
     .hud-pill {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 8px 16px;
-      height: 44px;
-      border-radius: 22px;
-      background: rgba(28, 28, 30, 0.82);
-      backdrop-filter: blur(25px) saturate(180%);
-      -webkit-backdrop-filter: blur(25px) saturate(180%);
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(255, 255, 255, 0.1) inset;
+      gap: 10px;
+      padding: 0 14px;
+      height: 42px;
+      border-radius: 9999px;
+      background: rgba(22, 22, 26, 0.88);
+      backdrop-filter: blur(32px) saturate(220%);
+      -webkit-backdrop-filter: blur(32px) saturate(220%);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 
+        0 14px 40px rgba(0, 0, 0, 0.55),
+        0 3px 8px rgba(0, 0, 0, 0.35),
+        0 1px 0 rgba(255, 255, 255, 0.12) inset;
       color: #ffffff;
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 500;
       letter-spacing: -0.2px;
-      animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-      cursor: default;
+      animation: popIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: grab;
+      -webkit-app-region: drag;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
+    .hud-pill:active {
+      cursor: grabbing;
+    }
+    .hud-pill:hover {
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
     @keyframes popIn {
-      from { transform: scale(0.85); opacity: 0; }
-      to { transform: scale(1); opacity: 1; }
+      from { transform: scale(0.92) translateY(6px); opacity: 0; }
+      to { transform: scale(1) translateY(0); opacity: 1; }
     }
-    /* Waveform visualizer bars */
-    .waveforms {
+
+    /* Mic icon & state indicator */
+    .icon-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      position: relative;
+    }
+    .mic-svg {
+      width: 15px;
+      height: 15px;
+      color: rgba(255, 255, 255, 0.7);
+      transition: color 0.2s ease, transform 0.2s ease;
+    }
+    .status-dot {
+      position: absolute;
+      bottom: 0px;
+      right: 0px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #5e5ce6;
+      border: 1.5px solid #16161a;
+      transition: background-color 0.25s ease;
+    }
+
+    /* Audio frequency waveforms: HIDDEN BY DEFAULT when silent */
+    .waveform-container {
       display: flex;
       align-items: center;
       gap: 3px;
-      height: 18px;
+      height: 16px;
+      width: 0;
+      opacity: 0;
+      overflow: hidden;
+      transform: scaleX(0.7);
+      transform-origin: left center;
+      transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.2s ease,
+                  transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
+    /* ONLY shown when voice is actively detected */
+    .waveform-container.active {
+      width: 32px;
+      opacity: 1;
+      transform: scaleX(1);
+    }
+
     .bar {
       width: 3px;
-      height: 6px;
-      border-radius: 2px;
-      background: #ff3b30;
-      transition: height 0.1s ease, background-color 0.2s ease;
-    }
-    .recording .bar {
-      background: #ff3b30;
-      animation: soundWave 1.2s ease-in-out infinite alternate;
-    }
-    .recording .bar:nth-child(1) { animation-delay: 0.1s; height: 8px; }
-    .recording .bar:nth-child(2) { animation-delay: 0.3s; height: 16px; }
-    .recording .bar:nth-child(3) { animation-delay: 0.15s; height: 12px; }
-    .recording .bar:nth-child(4) { animation-delay: 0.45s; height: 18px; }
-    .recording .bar:nth-child(5) { animation-delay: 0.2s; height: 10px; }
-
-    @keyframes soundWave {
-      0% { height: 4px; opacity: 0.6; }
-      50% { height: 18px; opacity: 1; }
-      100% { height: 6px; opacity: 0.7; }
+      height: 4px;
+      min-height: 3px;
+      border-radius: 9999px;
+      background: #5e5ce6;
+      transition: height 0.08s ease, background-color 0.2s ease;
     }
 
-    .processing .bar {
-      background: #ff9f0a;
-      animation: pulseBar 0.7s ease-in-out infinite;
+    .waveform-container.active .bar {
+      background: linear-gradient(180deg, #7c7aff 0%, #5e5ce6 100%);
+      animation: barDance 0.85s ease-in-out infinite alternate;
     }
-    @keyframes pulseBar {
-      0%, 100% { transform: scaleY(0.4); opacity: 0.5; }
-      50% { transform: scaleY(1); opacity: 1; }
+    .waveform-container.active .bar:nth-child(1) { animation-delay: 0.05s; height: 7px; }
+    .waveform-container.active .bar:nth-child(2) { animation-delay: 0.25s; height: 15px; }
+    .waveform-container.active .bar:nth-child(3) { animation-delay: 0.15s; height: 11px; }
+    .waveform-container.active .bar:nth-child(4) { animation-delay: 0.35s; height: 16px; }
+    .waveform-container.active .bar:nth-child(5) { animation-delay: 0.1s;  height: 8px; }
+
+    @keyframes barDance {
+      0% { height: 4px; }
+      50% { height: 15px; }
+      100% { height: 6px; }
     }
 
-    .writing .bar {
-      background: #30d158;
-      animation: pulseBar 0.45s ease-in-out infinite;
-    }
-
-    .done .bar {
-      background: #34c759;
-      animation: none;
-      height: 10px;
-    }
-
+    /* Status label & timer */
     .status-text {
       display: flex;
       align-items: center;
       gap: 6px;
-      min-width: 125px;
+      min-width: 105px;
+    }
+    .label {
+      color: rgba(255, 255, 255, 0.92);
+      font-weight: 500;
+      transition: color 0.2s ease;
     }
     .timer {
       font-variant-numeric: tabular-nums;
-      color: rgba(255, 255, 255, 0.6);
-      font-size: 12px;
-    }
-    .hint {
-      font-size: 11px;
-      color: rgba(255, 255, 255, 0.4);
-      background: rgba(255, 255, 255, 0.1);
-      padding: 2px 6px;
-      border-radius: 6px;
-    }
-    .cancel-btn {
       color: rgba(255, 255, 255, 0.45);
+      font-size: 11.5px;
+    }
+
+    /* Shortcut badge */
+    .shortcut-badge {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.5);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 2px 6px;
+      border-radius: 5px;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+    }
+
+    /* Cancel button */
+    .cancel-btn {
+      color: rgba(255, 255, 255, 0.4);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 2px;
+      width: 20px;
+      height: 20px;
       border-radius: 50%;
+      background: transparent;
       transition: all 0.15s ease;
+      -webkit-app-region: no-drag;
+      border: none;
+      outline: none;
+      padding: 0;
     }
     .cancel-btn:hover {
-      color: #ff3b30;
+      color: #ff453a;
       background: rgba(255, 255, 255, 0.12);
+    }
+    .cancel-btn:active {
+      transform: scale(0.92);
+    }
+
+    /* States styling */
+    .hud-pill.speaking .status-dot {
+      background: #30d158;
+      box-shadow: 0 0 8px rgba(48, 209, 88, 0.6);
+    }
+    .hud-pill.speaking .mic-svg {
+      color: #30d158;
+    }
+
+    .hud-pill.processing .status-dot {
+      background: #ff9f0a;
+      box-shadow: 0 0 8px rgba(255, 159, 10, 0.6);
+    }
+    .hud-pill.processing .label {
+      color: #ffb340;
+    }
+
+    .hud-pill.writing .status-dot {
+      background: #32d74b;
+      box-shadow: 0 0 8px rgba(50, 215, 75, 0.6);
+    }
+    .hud-pill.writing .label {
+      color: #32d74b;
+    }
+
+    .hud-pill.done .status-dot {
+      background: #34c759;
     }
   </style>
 </head>
 <body>
-  <div id="pill" class="hud-pill recording">
-    <div class="waveforms">
+  <div id="pill" class="hud-pill" data-tauri-drag-region>
+    <div class="icon-container" data-tauri-drag-region>
+      <svg class="mic-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+        <line x1="12" y1="19" x2="12" y2="22"></line>
+      </svg>
+      <div id="dot" class="status-dot"></div>
+    </div>
+
+    <!-- Frequency waveform bars: strictly hidden until voice is detected -->
+    <div id="waveforms" class="waveform-container" data-tauri-drag-region>
       <div class="bar"></div>
       <div class="bar"></div>
       <div class="bar"></div>
       <div class="bar"></div>
       <div class="bar"></div>
     </div>
-    <div class="status-text">
-      <span id="label">Listening...</span>
+
+    <div class="status-text" data-tauri-drag-region>
+      <span id="label" class="label">Listening</span>
       <span id="timer" class="timer">00:00</span>
     </div>
-    <span class="hint">⌥ Space</span>
-    <div id="btn-cancel" class="cancel-btn" title="Cancel (ESC)">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+
+    <span class="shortcut-badge" data-tauri-drag-region>⌥ Space</span>
+
+    <button id="btn-cancel" class="cancel-btn" title="Cancel (ESC)">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
         <line x1="18" y1="6" x2="6" y2="18"></line>
         <line x1="6" y1="6" x2="18" y2="18"></line>
       </svg>
-    </div>
+    </button>
   </div>
 
   <script>
@@ -160,6 +265,18 @@
     const pill = document.getElementById("pill");
     const label = document.getElementById("label");
     const timerEl = document.getElementById("timer");
+    const waveforms = document.getElementById("waveforms");
+    const bars = waveforms.querySelectorAll(".bar");
+
+    // Enable smooth window dragging on entire pill
+    pill.addEventListener("mousedown", async (e) => {
+      if (e.target.closest("#btn-cancel")) return;
+      if (window.__TAURI__ && window.__TAURI__.window) {
+        try {
+          await window.__TAURI__.window.getCurrentWindow().startDragging();
+        } catch (_) {}
+      }
+    });
 
     function startTimer(reset = false) {
       if (reset) {
@@ -187,26 +304,56 @@
       timerEl.textContent = `${mins}:${secs}`;
     }
 
-    // Listen for state changes emitted by Rust
+    // Toggle frequency waveforms ONLY when voice is actively detected
+    function setVoiceActive(isActive) {
+      if (isActive) {
+        waveforms.classList.add("active");
+        pill.classList.add("speaking");
+      } else {
+        waveforms.classList.remove("active");
+        pill.classList.remove("speaking");
+      }
+    }
+
+    // Listen for voice presence
+    listen("voice-active", (event) => {
+      const active = Boolean(event.payload);
+      setVoiceActive(active);
+    });
+
+    // Optional audio level for reactive frequency bar heights
+    listen("audio-level", (event) => {
+      const rms = Number(event.payload) || 0;
+      if (rms > 0.0055 && !waveforms.classList.contains("active")) {
+        setVoiceActive(true);
+      }
+    });
+
+    // Listen for state changes
     listen("status-changed", (event) => {
       const status = typeof event.payload === "string" ? event.payload.toLowerCase() : String(event.payload).toLowerCase();
       pill.className = "hud-pill " + status;
 
       if (status === "recording") {
-        label.textContent = "Listening...";
+        label.textContent = "Listening";
         startTimer(false);
       } else if (status === "processing") {
+        setVoiceActive(false);
         label.textContent = "Processing...";
       } else if (status === "writing") {
-        label.textContent = "Writing...";
+        setVoiceActive(false);
+        label.textContent = "Typing...";
       } else if (status === "done") {
+        setVoiceActive(false);
         stopTimer();
         label.textContent = "Done ✓";
       } else if (status === "idle") {
+        setVoiceActive(false);
         stopTimer();
         seconds = 0;
         updateTimerDisplay();
       } else {
+        setVoiceActive(false);
         stopTimer();
       }
     });

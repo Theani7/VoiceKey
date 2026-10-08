@@ -38,6 +38,7 @@ pub enum AudioEvent {
     SpeechChunk(Vec<f32>),
     InactivityTimeout,
     Level(f32),
+    VoiceActive(bool),
 }
 
 enum AudioCmd {
@@ -146,7 +147,12 @@ impl AudioRecorder {
                                 let mut sil_samples = silence_clone.lock().unwrap();
 
                                 if rms > SPEECH_THRESHOLD {
-                                    is_speaking_clone.store(true, Ordering::SeqCst);
+                                    if !is_speaking_clone.load(Ordering::SeqCst) {
+                                        is_speaking_clone.store(true, Ordering::SeqCst);
+                                        if let Some(tx) = &vad_event_tx {
+                                            let _ = tx.send(AudioEvent::VoiceActive(true));
+                                        }
+                                    }
                                     *s_samples += chunk.len();
                                     *sil_samples = 0;
                                 } else {
@@ -161,6 +167,9 @@ impl AudioRecorder {
                                     if is_speaking_clone.load(Ordering::SeqCst)
                                         && *sil_samples >= pause_limit_samples
                                     {
+                                        is_speaking_clone.store(false, Ordering::SeqCst);
+                                        let _ = tx.send(AudioEvent::VoiceActive(false));
+
                                         if *s_samples >= min_speech_samples {
                                             let mut buf = raw_buf_clone.lock().unwrap();
                                             let captured = buf.clone();
@@ -175,7 +184,6 @@ impl AudioRecorder {
                                             let _ = tx.send(AudioEvent::SpeechChunk(resampled));
                                         }
 
-                                        is_speaking_clone.store(false, Ordering::SeqCst);
                                         *s_samples = 0;
                                         *sil_samples = 0;
                                     } else if !is_speaking_clone.load(Ordering::SeqCst)

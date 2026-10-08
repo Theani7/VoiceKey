@@ -22,6 +22,7 @@ pub struct AppState {
     status: Mutex<AppStatus>,
     settings: Mutex<AppSettings>,
     models: Mutex<Vec<VoiceModel>>,
+    target_pid: Mutex<Option<i32>>,
     recorder: AudioRecorder,
     normalizer: TextNormalizer,
     recognizer: Arc<dyn SpeechRecognizer>,
@@ -227,6 +228,21 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
         return Ok(());
     }
 
+    // Capture frontmost app PID before overlay window is shown
+    let front_pid = voicekey_macos::get_frontmost_app_pid();
+    let current_pid = std::process::id() as i32;
+    let target_pid = if let Some(pid) = front_pid {
+        if pid != current_pid {
+            let mut t = state.target_pid.lock().await;
+            *t = Some(pid);
+            Some(pid)
+        } else {
+            *state.target_pid.lock().await
+        }
+    } else {
+        *state.target_pid.lock().await
+    };
+
     let (event_tx, event_rx) = std::sync::mpsc::channel::<voicekey_audio::AudioEvent>();
     state
         .recorder
@@ -265,10 +281,10 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
                     if let Ok(raw_text) = rec.transcribe_samples(&samples) {
                         let text = norm.normalize(&raw_text);
                         if !text.is_empty() {
-                            info!("VoiceKey Auto-Typed Chunk: '{}'", text);
+                            info!("VoiceKey Auto-Typed Chunk: '{}' to PID {:?}", text, target_pid);
                             let _ = app_clone.emit("status-changed", AppStatus::Writing);
                             let to_type = format!("{} ", text);
-                            let _ = insert_text(&to_type);
+                            let _ = insert_text(&to_type, target_pid);
                             std::thread::sleep(std::time::Duration::from_millis(250));
                         }
                     }
@@ -281,6 +297,12 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
                         }
                     }
                 }
+                voicekey_audio::AudioEvent::VoiceActive(is_active) => {
+                    let _ = app_clone.emit("voice-active", is_active);
+                }
+                voicekey_audio::AudioEvent::Level(rms) => {
+                    let _ = app_clone.emit("audio-level", rms);
+                }
                 voicekey_audio::AudioEvent::InactivityTimeout => {
                     info!("VoiceKey: Inactivity timeout (10s), closing dictation session");
                     let app_handle = app_clone.clone();
@@ -291,12 +313,11 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
                     });
                     break;
                 }
-                voicekey_audio::AudioEvent::Level(_) => {}
             }
         }
     });
 
-    info!("VoiceKey: Continuous dictation listening started");
+    info!("VoiceKey: Continuous dictation listening started (target_pid: {:?})", target_pid);
     Ok(())
 }
 
@@ -347,15 +368,16 @@ async fn stop_recording_and_insert(
     let mut final_text = None;
 
     // Transcribe residual speech if samples buffer has audio (>= 250ms at 16kHz)
+    let target_pid = { *state.target_pid.lock().await };
     if samples.len() >= 4000 {
         let _ = app.emit("status-changed", AppStatus::Writing);
         let raw_text_result = tokio::task::spawn_blocking(move || recognizer.transcribe_samples(&samples)).await;
         if let Ok(Ok(raw_text)) = raw_text_result {
             let normalized_text = normalizer.normalize(&raw_text);
             if !normalized_text.is_empty() {
-                info!("VoiceKey Transcribed Final Chunk: '{}' -> '{}'", raw_text, normalized_text);
+                info!("VoiceKey Transcribed Final Chunk: '{}' -> '{}' to PID {:?}", raw_text, normalized_text, target_pid);
                 let text_to_insert = format!("{} ", normalized_text);
-                let _ = tokio::task::spawn_blocking(move || insert_text(&text_to_insert)).await;
+                let _ = tokio::task::spawn_blocking(move || insert_text(&text_to_insert, target_pid)).await;
                 final_text = Some(normalized_text);
             }
         }
@@ -417,6 +439,7 @@ fn main() {
             status: Mutex::new(AppStatus::Idle),
             settings: Mutex::new(AppSettings::default()),
             models: Mutex::new(get_default_models()),
+            target_pid: Mutex::new(None),
             recorder: AudioRecorder::new(),
             normalizer: TextNormalizer::new(),
             recognizer,

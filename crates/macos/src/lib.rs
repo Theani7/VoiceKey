@@ -37,6 +37,9 @@ extern "C" {
     fn CFRelease(cf: *const c_void);
 }
 
+use cocoa::base::{id, nil};
+use objc::{class, msg_send, sel, sel_impl};
+
 #[link(name = "CoreGraphics", kind = "framework")]
 extern "C" {
     fn CGEventSourceCreate(source_state: i32) -> *mut c_void;
@@ -47,8 +50,10 @@ extern "C" {
     ) -> *mut c_void;
     fn CGEventSetFlags(event: *mut c_void, flags: u64);
     fn CGEventPost(tap: u32, event: *mut c_void);
+    fn CGEventPostToPid(pid: i32, event: *mut c_void);
 }
 
+const K_CG_HID_EVENT_TAP: u32 = 0;
 const K_CG_SESSION_EVENT_TAP: u32 = 1;
 const K_CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE: i32 = 1;
 const K_CG_EVENT_FLAG_MASK_COMMAND: u64 = 0x00100000;
@@ -65,6 +70,46 @@ pub fn request_accessibility_permission() -> bool {
         let key = CFString::new("AXTrustedCheckOptionPrompt");
         let dict = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), CFBoolean::true_value().as_CFType())]);
         AXIsProcessTrustedWithOptions(dict.as_concrete_TypeRef() as *const c_void)
+    }
+}
+
+/// Returns the PID of the currently frontmost active application
+pub fn get_frontmost_app_pid() -> Option<i32> {
+    unsafe {
+        let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+        if workspace == nil {
+            return None;
+        }
+        let app: id = msg_send![workspace, frontmostApplication];
+        if app == nil {
+            return None;
+        }
+        let pid: i32 = msg_send![app, processIdentifier];
+        Some(pid)
+    }
+}
+
+/// Brings the application with the given PID to the front and activates it
+pub fn activate_app_by_pid(pid: i32) {
+    unsafe {
+        let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+        if workspace == nil {
+            return;
+        }
+        let running_apps: id = msg_send![workspace, runningApplications];
+        if running_apps == nil {
+            return;
+        }
+        let count: usize = msg_send![running_apps, count];
+        for i in 0..count {
+            let app: id = msg_send![running_apps, objectAtIndex: i];
+            let app_pid: i32 = msg_send![app, processIdentifier];
+            if app_pid == pid {
+                // NSApplicationActivateIgnoringOtherApps = 1 << 0
+                let _: bool = msg_send![app, activateWithOptions: 1u64];
+                break;
+            }
+        }
     }
 }
 
@@ -111,9 +156,14 @@ pub fn direct_ax_insert(text: &str) -> Result<bool, MacOSError> {
     }
 }
 
-/// Synthesizes Cmd+V keystroke to paste into the active cursor (supports AppKit, Catalyst, Electron)
-pub fn paste_keystroke() -> Result<(), MacOSError> {
+/// Synthesizes Cmd+V keystroke directly targeting application PID and session taps
+pub fn paste_keystroke(target_pid: Option<i32>) -> Result<(), MacOSError> {
     unsafe {
+        if let Some(pid) = target_pid {
+            activate_app_by_pid(pid);
+            sleep(Duration::from_millis(40));
+        }
+
         // Create an isolated event source to clear conflicting hardware modifiers (e.g. Option key)
         let source = CGEventSourceCreate(K_CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE);
 
@@ -125,10 +175,15 @@ pub fn paste_keystroke() -> Result<(), MacOSError> {
             return Err(MacOSError::EventError("Failed to create key down event".into()));
         }
         CGEventSetFlags(key_down, K_CG_EVENT_FLAG_MASK_COMMAND);
+
+        if let Some(pid) = target_pid {
+            CGEventPostToPid(pid, key_down);
+        }
         CGEventPost(K_CG_SESSION_EVENT_TAP, key_down);
+        CGEventPost(K_CG_HID_EVENT_TAP, key_down);
         CFRelease(key_down);
 
-        sleep(Duration::from_millis(45));
+        sleep(Duration::from_millis(50));
 
         let key_up = CGEventCreateKeyboardEvent(source, KEY_CODE_V, false);
         if key_up.is_null() {
@@ -138,7 +193,12 @@ pub fn paste_keystroke() -> Result<(), MacOSError> {
             return Err(MacOSError::EventError("Failed to create key up event".into()));
         }
         CGEventSetFlags(key_up, K_CG_EVENT_FLAG_MASK_COMMAND);
+
+        if let Some(pid) = target_pid {
+            CGEventPostToPid(pid, key_up);
+        }
         CGEventPost(K_CG_SESSION_EVENT_TAP, key_up);
+        CGEventPost(K_CG_HID_EVENT_TAP, key_up);
         CFRelease(key_up);
 
         if !source.is_null() {
@@ -149,18 +209,8 @@ pub fn paste_keystroke() -> Result<(), MacOSError> {
     }
 }
 
-/// Fallback paste using macOS AppleScript System Events for Catalyst apps (WhatsApp)
-pub fn paste_keystroke_applescript() -> bool {
-    let output = std::process::Command::new("osascript")
-        .arg("-e")
-        .arg("tell application \"System Events\" to keystroke \"v\" using command down")
-        .output();
-
-    matches!(output, Ok(out) if out.status.success())
-}
-
-/// Inserts text at the cursor: tries direct AX first, falls back to clipboard paste
-pub fn insert_text(text: &str) -> Result<(), MacOSError> {
+/// Inserts text at the cursor: tries direct AX first, falls back to targeted clipboard paste
+pub fn insert_text(text: &str, target_pid: Option<i32>) -> Result<(), MacOSError> {
     if text.is_empty() {
         return Ok(());
     }
@@ -180,16 +230,15 @@ pub fn insert_text(text: &str) -> Result<(), MacOSError> {
         .map_err(|e| MacOSError::ClipboardError(e.to_string()))?;
 
     // Allow clipboard to settle before sending keystroke
-    sleep(Duration::from_millis(60));
+    sleep(Duration::from_millis(50));
 
-    // Try CoreGraphics session paste first; fallback to AppleScript if needed
-    if let Err(e) = paste_keystroke() {
-        debug!("paste_keystroke failed: {:?}, trying applescript fallback", e);
-        paste_keystroke_applescript();
-    } else {
-        // Also fire AppleScript if in a tough Catalyst environment
-        sleep(Duration::from_millis(15));
+    // Ensure target app is active if known
+    if let Some(pid) = target_pid {
+        activate_app_by_pid(pid);
+        sleep(Duration::from_millis(40));
     }
+
+    paste_keystroke(target_pid)?;
 
     Ok(())
 }
