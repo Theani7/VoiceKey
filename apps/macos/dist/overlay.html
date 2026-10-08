@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoiceKey Dictation</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+    }
+    .hud-pill {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      height: 44px;
+      border-radius: 22px;
+      background: rgba(28, 28, 30, 0.82);
+      backdrop-filter: blur(25px) saturate(180%);
+      -webkit-backdrop-filter: blur(25px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(255, 255, 255, 0.1) inset;
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: -0.2px;
+      animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: default;
+    }
+    @keyframes popIn {
+      from { transform: scale(0.85); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    /* Waveform visualizer bars */
+    .waveforms {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      height: 18px;
+    }
+    .bar {
+      width: 3px;
+      height: 6px;
+      border-radius: 2px;
+      background: #ff3b30;
+      transition: height 0.1s ease;
+    }
+    .recording .bar {
+      animation: soundWave 1.2s ease-in-out infinite alternate;
+    }
+    .recording .bar:nth-child(1) { animation-delay: 0.1s; height: 8px; }
+    .recording .bar:nth-child(2) { animation-delay: 0.3s; height: 16px; }
+    .recording .bar:nth-child(3) { animation-delay: 0.15s; height: 12px; }
+    .recording .bar:nth-child(4) { animation-delay: 0.45s; height: 18px; }
+    .recording .bar:nth-child(5) { animation-delay: 0.2s; height: 10px; }
+
+    @keyframes soundWave {
+      0% { height: 4px; opacity: 0.6; }
+      50% { height: 18px; opacity: 1; }
+      100% { height: 6px; opacity: 0.7; }
+    }
+
+    .processing .bar {
+      background: #ffcc00;
+      animation: pulseBar 0.8s ease-in-out infinite;
+    }
+    @keyframes pulseBar {
+      0%, 100% { transform: scaleY(0.4); opacity: 0.5; }
+      50% { transform: scaleY(1); opacity: 1; }
+    }
+
+    .done .bar {
+      background: #34c759;
+      animation: none;
+      height: 10px;
+    }
+
+    .status-text {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 125px;
+    }
+    .timer {
+      font-variant-numeric: tabular-nums;
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 12px;
+    }
+    .hint {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.4);
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+    .cancel-btn {
+      color: rgba(255, 255, 255, 0.45);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px;
+      border-radius: 50%;
+      transition: all 0.15s ease;
+    }
+    .cancel-btn:hover {
+      color: #ff3b30;
+      background: rgba(255, 255, 255, 0.12);
+    }
+  </style>
+</head>
+<body>
+  <div id="pill" class="hud-pill recording">
+    <div class="waveforms">
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+    </div>
+    <div class="status-text">
+      <span id="label">सुन्दैछ...</span>
+      <span id="timer" class="timer">00:00</span>
+    </div>
+    <span class="hint">⌥ Space</span>
+    <div id="btn-cancel" class="cancel-btn" title="Cancel (ESC)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </div>
+  </div>
+
+  <script>
+    const { listen } = window.__TAURI__.event;
+    const { invoke } = window.__TAURI__.core;
+
+    let seconds = 0;
+    let timerInterval = null;
+
+    const pill = document.getElementById("pill");
+    const label = document.getElementById("label");
+    const timerEl = document.getElementById("timer");
+
+    function startTimer() {
+      seconds = 0;
+      updateTimerDisplay();
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        seconds++;
+        updateTimerDisplay();
+      }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(timerInterval);
+    }
+
+    function updateTimerDisplay() {
+      const mins = String(Math.floor(seconds / 60)).padStart(2, "0");
+      const secs = String(seconds % 60).padStart(2, "0");
+      timerEl.textContent = `${mins}:${secs}`;
+    }
+
+    // Listen for state changes emitted by Rust
+    listen("status-changed", (event) => {
+      const status = event.payload;
+      pill.className = "hud-pill " + status;
+
+      if (status === "recording") {
+        label.textContent = "सुन्दैछ...";
+        startTimer();
+      } else if (status === "processing") {
+        stopTimer();
+        label.textContent = "टाइप गर्दैछ...";
+      } else if (status === "done") {
+        stopTimer();
+        label.textContent = "भयो ✓";
+      } else {
+        stopTimer();
+      }
+    });
+
+    // Cancel on click or ESC
+    document.getElementById("btn-cancel").addEventListener("click", () => {
+      invoke("cancel_recording");
+    });
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        invoke("cancel_recording");
+      }
+    });
+  </script>
+</body>
+</html>

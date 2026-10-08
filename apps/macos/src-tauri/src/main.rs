@@ -55,7 +55,26 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
     state.recorder.start().map_err(|e| e.to_string())?;
     *status = AppStatus::Recording;
     let _ = app.emit("status-changed", AppStatus::Recording);
+
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        let _ = overlay.show();
+        let _ = overlay.set_always_on_top(true);
+    }
+
     info!("VoiceKey: Recording started");
+    Ok(())
+}
+
+#[tauri::command]
+async fn cancel_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.recorder.cancel();
+    let mut status = state.status.lock().await;
+    *status = AppStatus::Idle;
+    let _ = app.emit("status-changed", AppStatus::Idle);
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        let _ = overlay.hide();
+    }
+    info!("VoiceKey: Recording cancelled");
     Ok(())
 }
 
@@ -80,6 +99,9 @@ async fn stop_recording_and_insert(
         let mut status = state.status.lock().await;
         *status = AppStatus::Idle;
         let _ = app.emit("status-changed", AppStatus::Idle);
+        if let Some(overlay) = app.get_webview_window("overlay") {
+            let _ = overlay.hide();
+        }
         return Ok(None);
     }
 
@@ -107,14 +129,17 @@ async fn stop_recording_and_insert(
         let _ = app.emit("status-changed", AppStatus::Done);
     }
 
-    // Reset to idle after 1 second
+    // Reset to idle after 800ms and hide HUD overlay
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(1000)).await;
+        tokio::time::sleep(Duration::from_millis(800)).await;
         if let Some(state) = app_clone.try_state::<AppState>() {
             let mut s = state.status.lock().await;
             *s = AppStatus::Idle;
             let _ = app_clone.emit("status-changed", AppStatus::Idle);
+        }
+        if let Some(overlay) = app_clone.get_webview_window("overlay") {
+            let _ = overlay.hide();
         }
     });
 
@@ -225,6 +250,19 @@ fn main() {
                 })
                 .build(app)?;
 
+            // Position overlay window at bottom center of screen (like macOS Dictation)
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                if let Ok(Some(monitor)) = overlay.current_monitor() {
+                    let size = monitor.size();
+                    let scale = monitor.scale_factor();
+                    let mon_width = size.width as f64 / scale;
+                    let mon_height = size.height as f64 / scale;
+                    let x = (mon_width - 320.0) / 2.0;
+                    let y = mon_height - 130.0;
+                    let _ = overlay.set_position(tauri::LogicalPosition::new(x, y));
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -234,6 +272,7 @@ fn main() {
             get_settings,
             start_recording,
             stop_recording_and_insert,
+            cancel_recording,
         ])
         .run(tauri::generate_context!())
         .expect("error while running VoiceKey application");

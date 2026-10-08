@@ -10,11 +10,26 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "VoiceKey Settings",
         "width": 640,
         "height": 520,
         "resizable": false,
         "visible": false
+      },
+      {
+        "label": "overlay",
+        "title": "VoiceKey Dictation",
+        "url": "overlay.html",
+        "width": 320,
+        "height": 64,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "skipTaskbar": true,
+        "shadow": false
       }
     ],
     "security": {
