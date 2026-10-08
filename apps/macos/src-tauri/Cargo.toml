@@ -13,6 +13,7 @@ voicekey-core = { path = "../../../crates/core" }
 voicekey-audio = { path = "../../../crates/audio" }
 voicekey-text = { path = "../../../crates/text" }
 voicekey-macos = { path = "../../../crates/macos" }
+voicekey_platform = { path = "../../../crates/platform", features = ["macos"] }
 voicekey-asr = { path = "../../../crates/asr" }
 
 tauri = { version = "2", features = ["tray-icon"] }

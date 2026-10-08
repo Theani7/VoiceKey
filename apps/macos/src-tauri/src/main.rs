@@ -15,10 +15,8 @@ use voicekey_core::{
     get_default_models, AppSettings, AppStatus, DownloadProgress, ModelStatus,
     SystemCapabilities, VoiceModel,
 };
-use voicekey_macos::{
-    insert_text, is_accessibility_enabled, request_accessibility_permission,
-    show_window_without_stealing_focus,
-};
+use voicekey_macos::{show_window_without_stealing_focus, is_accessibility_enabled, request_accessibility_permission, get_frontmost_app_pid};
+use voicekey_platform::{get_injector, PlatformError};
 use voicekey_text::TextNormalizer;
 
 pub struct AppState {
@@ -296,7 +294,8 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
                             info!("VoiceKey Auto-Typed Chunk: '{}' to PID {:?}", text, target_pid);
                             let _ = app_clone.emit("status-changed", AppStatus::Writing);
                             let to_type = format!("{} ", text);
-                            let _ = insert_text(&to_type, target_pid);
+                            let injector = get_injector();
+                let _ = injector.insert_text(&to_type, target_pid).map_err(|e| format!("Insert error: {}", e));
                             std::thread::sleep(std::time::Duration::from_millis(250));
                         }
                     }
@@ -389,7 +388,8 @@ async fn stop_recording_and_insert(
             if !normalized_text.is_empty() {
                 info!("VoiceKey Transcribed Final Chunk: '{}' -> '{}' to PID {:?}", raw_text, normalized_text, target_pid);
                 let text_to_insert = format!("{} ", normalized_text);
-                let _ = tokio::task::spawn_blocking(move || insert_text(&text_to_insert, target_pid)).await;
+                let injector = get_injector();
+                let _ = injector.insert_text(&text_to_insert, target_pid).map_err(|e| format!("Insert error: {}", e));
                 final_text = Some(normalized_text);
             }
         }

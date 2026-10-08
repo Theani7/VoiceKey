@@ -326,6 +326,8 @@
       const rms = Number(event.payload) || 0;
       if (rms > 0.0055 && !waveforms.classList.contains("active")) {
         setVoiceActive(true);
+      } else if (rms <= 0.0055 && waveforms.classList.contains("active")) {
+        setVoiceActive(false);
       }
     });
 

@@ -4428,6 +4428,7 @@ dependencies = [
  "voicekey-core",
  "voicekey-macos",
  "voicekey-text",
+ "voicekey_platform",
 ]
 
 [[package]]
@@ -4488,6 +4489,14 @@ dependencies = [
  "regex",
  "unicode-normalization",
  "voicekey-core",
+]
+
+[[package]]
+name = "voicekey_platform"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+ "voicekey-macos",
 ]
 
 [[package]]

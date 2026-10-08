@@ -1,0 +1,13 @@
+[package]
+name = "voicekey_platform"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+voicekey-macos = { path = "../macos", optional = true }
+thiserror = "2.0"
+
+[features]
+macos = ["voicekey-macos"]
+windows = []
+linux = []

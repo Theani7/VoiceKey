@@ -5,6 +5,7 @@ members = [
     "crates/text",
     "crates/macos",
     "crates/asr",
+    "crates/platform",
     "apps/macos/src-tauri",
 ]
 resolver = "2"
