@@ -68,8 +68,9 @@ impl AudioRecorder {
                     }
                     AudioCmd::Start(reply) => {
                         if rec_flag.load(Ordering::SeqCst) {
-                            let _ = reply.send(Err(AudioError::AlreadyRecording));
-                            continue;
+                            stream = None;
+                            meta = None;
+                            rec_flag.store(false, Ordering::SeqCst);
                         }
 
                         let res = (|| -> Result<(), AudioError> {

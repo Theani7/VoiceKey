@@ -93,7 +93,19 @@ async fn stop_recording_and_insert(
     }
 
     info!("VoiceKey: Processing audio...");
-    let samples = state.recorder.stop().map_err(|e| e.to_string())?;
+    let samples = match state.recorder.stop() {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("Failed to stop audio recorder: {}", e);
+            let mut status = state.status.lock().await;
+            *status = AppStatus::Idle;
+            let _ = app.emit("status-changed", AppStatus::Idle);
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                let _ = overlay.hide();
+            }
+            return Err(e.to_string());
+        }
+    };
 
     if samples.is_empty() {
         let mut status = state.status.lock().await;
@@ -108,11 +120,31 @@ async fn stop_recording_and_insert(
     let recognizer = state.recognizer.clone();
     let normalizer = state.normalizer.clone();
 
-    // Run ASR on background thread
-    let raw_text = tokio::task::spawn_blocking(move || recognizer.transcribe_samples(&samples))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+    // Run ASR on background thread with error handling
+    let raw_text_result = tokio::task::spawn_blocking(move || recognizer.transcribe_samples(&samples)).await;
+    let raw_text = match raw_text_result {
+        Ok(Ok(text)) => text,
+        Ok(Err(e)) => {
+            warn!("ASR transcription error: {}", e);
+            let mut status = state.status.lock().await;
+            *status = AppStatus::Idle;
+            let _ = app.emit("status-changed", AppStatus::Idle);
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                let _ = overlay.hide();
+            }
+            return Err(e.to_string());
+        }
+        Err(join_err) => {
+            warn!("ASR join error: {}", join_err);
+            let mut status = state.status.lock().await;
+            *status = AppStatus::Idle;
+            let _ = app.emit("status-changed", AppStatus::Idle);
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                let _ = overlay.hide();
+            }
+            return Err(join_err.to_string());
+        }
+    };
 
     let normalized_text = normalizer.normalize(&raw_text);
     info!("VoiceKey Transcribed: '{}' -> '{}'", raw_text, normalized_text);
@@ -129,17 +161,19 @@ async fn stop_recording_and_insert(
         let _ = app.emit("status-changed", AppStatus::Done);
     }
 
-    // Reset to idle after 800ms and hide HUD overlay
+    // Reset to idle after 600ms and hide HUD overlay if still Done
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(800)).await;
+        tokio::time::sleep(Duration::from_millis(600)).await;
         if let Some(state) = app_clone.try_state::<AppState>() {
             let mut s = state.status.lock().await;
-            *s = AppStatus::Idle;
-            let _ = app_clone.emit("status-changed", AppStatus::Idle);
-        }
-        if let Some(overlay) = app_clone.get_webview_window("overlay") {
-            let _ = overlay.hide();
+            if *s == AppStatus::Done {
+                *s = AppStatus::Idle;
+                let _ = app_clone.emit("status-changed", AppStatus::Idle);
+                if let Some(overlay) = app_clone.get_webview_window("overlay") {
+                    let _ = overlay.hide();
+                }
+            }
         }
     });
 
@@ -190,11 +224,17 @@ fn main() {
                     let handle = app_handle.clone();
                     tauri::async_runtime::spawn(async move {
                         if let Some(state) = handle.try_state::<AppState>() {
-                            let is_recording = *state.status.lock().await == AppStatus::Recording;
-                            if is_recording {
-                                let _ = stop_recording_and_insert(handle.clone(), state).await;
-                            } else {
-                                let _ = start_recording(handle.clone(), state).await;
+                            let current_status = { *state.status.lock().await };
+                            match current_status {
+                                AppStatus::Recording => {
+                                    let _ = stop_recording_and_insert(handle.clone(), state).await;
+                                }
+                                AppStatus::Idle | AppStatus::Done | AppStatus::Error => {
+                                    let _ = start_recording(handle.clone(), state).await;
+                                }
+                                AppStatus::Processing => {
+                                    // Busy processing audio, ignore shortcut
+                                }
                             }
                         }
                     });
@@ -225,11 +265,15 @@ fn main() {
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             if let Some(state) = app_handle.try_state::<AppState>() {
-                                let is_recording = *state.status.lock().await == AppStatus::Recording;
-                                if is_recording {
-                                    let _ = stop_recording_and_insert(app_handle.clone(), state).await;
-                                } else {
-                                    let _ = start_recording(app_handle.clone(), state).await;
+                                let current_status = { *state.status.lock().await };
+                                match current_status {
+                                    AppStatus::Recording => {
+                                        let _ = stop_recording_and_insert(app_handle.clone(), state).await;
+                                    }
+                                    AppStatus::Idle | AppStatus::Done | AppStatus::Error => {
+                                        let _ = start_recording(app_handle.clone(), state).await;
+                                    }
+                                    AppStatus::Processing => {}
                                 }
                             }
                         });
