@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs, deprecated)]
+
 use arboard::Clipboard;
 use core_foundation::base::TCFType;
 use core_foundation::boolean::CFBoolean;
