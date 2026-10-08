@@ -594,6 +594,7 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while running VoiceKey application")
         .run(|app_handle, event| {
+            #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {
                 if let Some(window) = app_handle.get_webview_window("main") {
                     let _ = window.show();
@@ -601,5 +602,7 @@ fn main() {
                     let _ = window.set_focus();
                 }
             }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app_handle, event);
         });
 }

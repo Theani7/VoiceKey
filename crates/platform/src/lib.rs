@@ -27,7 +27,7 @@ pub trait TextInjector {
     fn insert_text(&self, text: &str, target_pid: Option<i32>) -> Result<(), PlatformError>;
 }
 
-#[cfg(feature = "macos")]
+#[cfg(target_os = "macos")]
 mod macos_impl {
     use super::{PlatformError, TextInjector};
     use voicekey_macos::insert_text as mac_insert_text;
@@ -41,7 +41,7 @@ mod macos_impl {
     }
 }
 
-#[cfg(feature = "windows")]
+#[cfg(target_os = "windows")]
 mod windows_impl {
     use super::{PlatformError, TextInjector};
     pub struct WindowsInjector;
@@ -52,7 +52,7 @@ mod windows_impl {
     }
 }
 
-#[cfg(feature = "linux")]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod linux_impl {
     use super::{PlatformError, TextInjector};
     pub struct LinuxInjector;
@@ -63,14 +63,12 @@ mod linux_impl {
     }
 }
 
-/// Factory returning a boxed `TextInjector` appropriate for the enabled feature.
+/// Factory returning a boxed `TextInjector` appropriate for the platform.
 pub fn get_injector() -> Box<dyn TextInjector> {
-    #[cfg(feature = "macos")]
+    #[cfg(target_os = "macos")]
     { Box::new(macos_impl::MacInjector) }
-    #[cfg(all(not(feature = "macos"), feature = "windows"))]
+    #[cfg(target_os = "windows")]
     { Box::new(windows_impl::WindowsInjector) }
-    #[cfg(all(not(feature = "macos"), feature = "linux"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     { Box::new(linux_impl::LinuxInjector) }
-    #[cfg(not(any(feature = "macos", feature = "windows", feature = "linux")))]
-    { panic!("No platform feature enabled for voicekey_platform") }
 }
