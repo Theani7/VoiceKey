@@ -39,6 +39,7 @@ extern "C" {
 
 #[link(name = "CoreGraphics", kind = "framework")]
 extern "C" {
+    fn CGEventSourceCreate(source_state: i32) -> *mut c_void;
     fn CGEventCreateKeyboardEvent(
         source: *mut c_void,
         virtual_key: u16,
@@ -48,7 +49,8 @@ extern "C" {
     fn CGEventPost(tap: u32, event: *mut c_void);
 }
 
-const K_CG_HID_EVENT_TAP: u32 = 0;
+const K_CG_SESSION_EVENT_TAP: u32 = 1;
+const K_CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE: i32 = 1;
 const K_CG_EVENT_FLAG_MASK_COMMAND: u64 = 0x00100000;
 const KEY_CODE_V: u16 = 9;
 
@@ -109,29 +111,52 @@ pub fn direct_ax_insert(text: &str) -> Result<bool, MacOSError> {
     }
 }
 
-/// Synthesizes Cmd+V keystroke to paste into the active cursor
+/// Synthesizes Cmd+V keystroke to paste into the active cursor (supports AppKit, Catalyst, Electron)
 pub fn paste_keystroke() -> Result<(), MacOSError> {
     unsafe {
-        let key_down = CGEventCreateKeyboardEvent(std::ptr::null_mut(), KEY_CODE_V, true);
+        // Create an isolated event source to clear conflicting hardware modifiers (e.g. Option key)
+        let source = CGEventSourceCreate(K_CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE);
+
+        let key_down = CGEventCreateKeyboardEvent(source, KEY_CODE_V, true);
         if key_down.is_null() {
+            if !source.is_null() {
+                CFRelease(source);
+            }
             return Err(MacOSError::EventError("Failed to create key down event".into()));
         }
         CGEventSetFlags(key_down, K_CG_EVENT_FLAG_MASK_COMMAND);
-        CGEventPost(K_CG_HID_EVENT_TAP, key_down);
+        CGEventPost(K_CG_SESSION_EVENT_TAP, key_down);
         CFRelease(key_down);
 
-        sleep(Duration::from_millis(15));
+        sleep(Duration::from_millis(45));
 
-        let key_up = CGEventCreateKeyboardEvent(std::ptr::null_mut(), KEY_CODE_V, false);
+        let key_up = CGEventCreateKeyboardEvent(source, KEY_CODE_V, false);
         if key_up.is_null() {
+            if !source.is_null() {
+                CFRelease(source);
+            }
             return Err(MacOSError::EventError("Failed to create key up event".into()));
         }
         CGEventSetFlags(key_up, K_CG_EVENT_FLAG_MASK_COMMAND);
-        CGEventPost(K_CG_HID_EVENT_TAP, key_up);
+        CGEventPost(K_CG_SESSION_EVENT_TAP, key_up);
         CFRelease(key_up);
+
+        if !source.is_null() {
+            CFRelease(source);
+        }
 
         Ok(())
     }
+}
+
+/// Fallback paste using macOS AppleScript System Events for Catalyst apps (WhatsApp)
+pub fn paste_keystroke_applescript() -> bool {
+    let output = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg("tell application \"System Events\" to keystroke \"v\" using command down")
+        .output();
+
+    matches!(output, Ok(out) if out.status.success())
 }
 
 /// Inserts text at the cursor: tries direct AX first, falls back to clipboard paste
@@ -140,35 +165,30 @@ pub fn insert_text(text: &str) -> Result<(), MacOSError> {
         return Ok(());
     }
 
-    // Try direct AX first
+    // Try direct AX first (works for native AppKit apps like Notes, TextEdit)
     if let Ok(true) = direct_ax_insert(text) {
         return Ok(());
     }
 
-    // Fallback: clipboard paste
+    // Fallback: clipboard paste (for Catalyst, Electron, WebKit like WhatsApp, Chrome, Slack)
     debug!("Using clipboard fallback for text insertion");
     let mut clipboard = Clipboard::new().map_err(|e| MacOSError::ClipboardError(e.to_string()))?;
     
-    // Save previous clipboard text if any
-    let previous_text = clipboard.get_text().ok();
-
     // Set new text to clipboard
     clipboard
         .set_text(text)
         .map_err(|e| MacOSError::ClipboardError(e.to_string()))?;
 
     // Allow clipboard to settle before sending keystroke
-    sleep(Duration::from_millis(25));
-    paste_keystroke()?;
+    sleep(Duration::from_millis(60));
 
-    // Small delay, then restore previous clipboard in background to not mess up user's clipboard
-    if let Some(prev) = previous_text {
-        std::thread::spawn(move || {
-            sleep(Duration::from_millis(400));
-            if let Ok(mut cb) = Clipboard::new() {
-                let _ = cb.set_text(prev);
-            }
-        });
+    // Try CoreGraphics session paste first; fallback to AppleScript if needed
+    if let Err(e) = paste_keystroke() {
+        debug!("paste_keystroke failed: {:?}, trying applescript fallback", e);
+        paste_keystroke_applescript();
+    } else {
+        // Also fire AppleScript if in a tough Catalyst environment
+        sleep(Duration::from_millis(15));
     }
 
     Ok(())
