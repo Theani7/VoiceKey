@@ -52,7 +52,12 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
         return Ok(());
     }
 
-    state.recorder.start().map_err(|e| e.to_string())?;
+    let (event_tx, event_rx) = std::sync::mpsc::channel::<voicekey_audio::AudioEvent>();
+    state
+        .recorder
+        .start_with_events(event_tx)
+        .map_err(|e| e.to_string())?;
+
     *status = AppStatus::Recording;
     let _ = app.emit("status-changed", AppStatus::Recording);
 
@@ -61,7 +66,60 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
         let _ = overlay.set_always_on_top(true);
     }
 
-    info!("VoiceKey: Recording started");
+    // Continuous pause-to-type event loop (like Siri / Gemini Voice Typing)
+    let app_clone = app.clone();
+    let recognizer = state.recognizer.clone();
+    let normalizer = state.normalizer.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        while let Ok(event) = event_rx.recv() {
+            match event {
+                voicekey_audio::AudioEvent::SpeechChunk(samples) => {
+                    if samples.is_empty() {
+                        continue;
+                    }
+                    info!(
+                        "VoiceKey: Pause detected, transcribing speech chunk ({} samples)...",
+                        samples.len()
+                    );
+                    let _ = app_clone.emit("status-changed", "processing");
+
+                    let rec = recognizer.clone();
+                    let norm = normalizer.clone();
+
+                    if let Ok(raw_text) = rec.transcribe_samples(&samples) {
+                        let text = norm.normalize(&raw_text);
+                        if !text.is_empty() {
+                            info!("VoiceKey Auto-Typed Chunk: '{}'", text);
+                            let to_type = format!("{} ", text);
+                            let _ = insert_text(&to_type);
+                        }
+                    }
+
+                    // Return HUD to listening state if session is still active
+                    if let Some(st) = app_clone.try_state::<AppState>() {
+                        let current_s = tauri::async_runtime::block_on(async { *st.status.lock().await });
+                        if current_s == AppStatus::Recording {
+                            let _ = app_clone.emit("status-changed", AppStatus::Recording);
+                        }
+                    }
+                }
+                voicekey_audio::AudioEvent::SilenceTimeout => {
+                    info!("VoiceKey: Silence timeout, auto-completing session");
+                    let app_handle = app_clone.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Some(st) = app_handle.try_state::<AppState>() {
+                            let _ = stop_recording_and_insert(app_handle.clone(), st).await;
+                        }
+                    });
+                    break;
+                }
+                voicekey_audio::AudioEvent::Level(_) => {}
+            }
+        }
+    });
+
+    info!("VoiceKey: Continuous dictation listening started");
     Ok(())
 }
 

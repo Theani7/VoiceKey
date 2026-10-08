@@ -33,8 +33,18 @@ pub struct AudioDeviceInfo {
     pub is_default: bool,
 }
 
+#[derive(Debug, Clone)]
+pub enum AudioEvent {
+    SpeechChunk(Vec<f32>),
+    SilenceTimeout,
+    Level(f32),
+}
+
 enum AudioCmd {
-    Start(Sender<Result<(), AudioError>>),
+    Start {
+        reply: Sender<Result<(), AudioError>>,
+        event_tx: Option<Sender<AudioEvent>>,
+    },
     Stop(Sender<Result<Vec<f32>, AudioError>>),
     Cancel,
     SetDevice(Option<String>),
@@ -46,7 +56,6 @@ pub struct AudioRecorder {
     sender: Sender<AudioCmd>,
 }
 
-// Guarantee Send + Sync for AudioRecorder
 unsafe impl Send for AudioRecorder {}
 unsafe impl Sync for AudioRecorder {}
 
@@ -66,7 +75,7 @@ impl AudioRecorder {
                     AudioCmd::SetDevice(name) => {
                         device_name = name;
                     }
-                    AudioCmd::Start(reply) => {
+                    AudioCmd::Start { reply, event_tx } => {
                         if rec_flag.load(Ordering::SeqCst) {
                             stream = None;
                             meta = None;
@@ -112,48 +121,116 @@ impl AudioRecorder {
                             let raw_buffer: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
                             let raw_buf_clone = raw_buffer.clone();
 
-                            let err_fn = |err| {
-                                tracing::error!("Audio stream error: {:?}", err);
+                            let vad_event_tx = event_tx.clone();
+
+                            // VAD state trackers (800ms silence threshold for pause)
+                            let is_speaking = Arc::new(AtomicBool::new(false));
+                            let silence_samples = Arc::new(Mutex::new(0usize));
+                            let speech_samples = Arc::new(Mutex::new(0usize));
+
+                            let is_speaking_clone = is_speaking.clone();
+                            let silence_clone = silence_samples.clone();
+                            let speech_clone = speech_samples.clone();
+
+                            let pause_limit_samples = (sample_rate as usize * channels * 75) / 100; // 750ms pause
+                            let min_speech_samples = (sample_rate as usize * channels * 35) / 100; // 350ms minimum speech
+                            let max_silence_timeout = sample_rate as usize * channels * 4; // 4s timeout
+
+                            let process_chunk = move |chunk: &[f32]| {
+                                let sum_sq: f32 = chunk.iter().map(|&s| s * s).sum();
+                                let rms = (sum_sq / chunk.len().max(1) as f32).sqrt();
+
+                                const SPEECH_THRESHOLD: f32 = 0.016;
+                                const SILENCE_THRESHOLD: f32 = 0.011;
+
+                                let mut s_samples = speech_clone.lock().unwrap();
+                                let mut sil_samples = silence_clone.lock().unwrap();
+
+                                if rms > SPEECH_THRESHOLD {
+                                    is_speaking_clone.store(true, Ordering::SeqCst);
+                                    *s_samples += chunk.len();
+                                    *sil_samples = 0;
+                                } else if rms < SILENCE_THRESHOLD {
+                                    *sil_samples += chunk.len();
+                                }
+
+                                if let Some(tx) = &vad_event_tx {
+                                    // Emit level periodically
+                                    let _ = tx.send(AudioEvent::Level(rms));
+
+                                    // Check pause commit
+                                    if is_speaking_clone.load(Ordering::SeqCst)
+                                        && *sil_samples >= pause_limit_samples
+                                    {
+                                        if *s_samples >= min_speech_samples {
+                                            let mut buf = raw_buf_clone.lock().unwrap();
+                                            let captured = buf.clone();
+                                            buf.clear();
+
+                                            let mono = downmix_to_mono(&captured, channels);
+                                            let resampled = resample_linear(
+                                                &mono,
+                                                sample_rate,
+                                                TARGET_SAMPLE_RATE,
+                                            );
+                                            let _ = tx.send(AudioEvent::SpeechChunk(resampled));
+                                        }
+
+                                        is_speaking_clone.store(false, Ordering::SeqCst);
+                                        *s_samples = 0;
+                                        *sil_samples = 0;
+                                    } else if !is_speaking_clone.load(Ordering::SeqCst)
+                                        && *sil_samples >= max_silence_timeout
+                                    {
+                                        let _ = tx.send(AudioEvent::SilenceTimeout);
+                                        *sil_samples = 0;
+                                    }
+                                }
                             };
 
+                            let buf_clone = raw_buffer.clone();
                             let s = match sample_format {
                                 SampleFormat::F32 => {
-                                    let buf = raw_buf_clone;
+                                    let b = buf_clone;
                                     device.build_input_stream(
                                         &config,
                                         move |data: &[f32], _: &_| {
-                                            let mut b = buf.lock().unwrap();
-                                            b.extend_from_slice(data);
+                                            b.lock().unwrap().extend_from_slice(data);
+                                            process_chunk(data);
                                         },
-                                        err_fn,
+                                        |err| tracing::error!("Audio error: {:?}", err),
                                         None,
                                     )
                                 }
                                 SampleFormat::I16 => {
-                                    let buf = raw_buf_clone;
+                                    let b = buf_clone;
                                     device.build_input_stream(
                                         &config,
                                         move |data: &[i16], _: &_| {
-                                            let mut b = buf.lock().unwrap();
-                                            for &sample in data {
-                                                b.push(sample as f32 / i16::MAX as f32);
-                                            }
+                                            let floats: Vec<f32> = data
+                                                .iter()
+                                                .map(|&s| s as f32 / i16::MAX as f32)
+                                                .collect();
+                                            b.lock().unwrap().extend_from_slice(&floats);
+                                            process_chunk(&floats);
                                         },
-                                        err_fn,
+                                        |err| tracing::error!("Audio error: {:?}", err),
                                         None,
                                     )
                                 }
                                 SampleFormat::U16 => {
-                                    let buf = raw_buf_clone;
+                                    let b = buf_clone;
                                     device.build_input_stream(
                                         &config,
                                         move |data: &[u16], _: &_| {
-                                            let mut b = buf.lock().unwrap();
-                                            for &sample in data {
-                                                b.push((sample as f32 - 32768.0) / 32768.0);
-                                            }
+                                            let floats: Vec<f32> = data
+                                                .iter()
+                                                .map(|&s| (s as f32 - 32768.0) / 32768.0)
+                                                .collect();
+                                            b.lock().unwrap().extend_from_slice(&floats);
+                                            process_chunk(&floats);
                                         },
-                                        err_fn,
+                                        |err| tracing::error!("Audio error: {:?}", err),
                                         None,
                                     )
                                 }
@@ -240,7 +317,18 @@ impl AudioRecorder {
     pub fn start(&self) -> Result<(), AudioError> {
         let (tx, rx) = channel();
         self.sender
-            .send(AudioCmd::Start(tx))
+            .send(AudioCmd::Start { reply: tx, event_tx: None })
+            .map_err(|_| AudioError::ChannelError)?;
+        rx.recv().map_err(|_| AudioError::ChannelError)?
+    }
+
+    pub fn start_with_events(&self, event_tx: Sender<AudioEvent>) -> Result<(), AudioError> {
+        let (tx, rx) = channel();
+        self.sender
+            .send(AudioCmd::Start {
+                reply: tx,
+                event_tx: Some(event_tx),
+            })
             .map_err(|_| AudioError::ChannelError)?;
         rx.recv().map_err(|_| AudioError::ChannelError)?
     }
