@@ -281,6 +281,16 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
                         }
                     }
                 }
+                voicekey_audio::AudioEvent::InactivityTimeout => {
+                    info!("VoiceKey: Inactivity timeout (10s), closing dictation session");
+                    let app_handle = app_clone.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Some(st) = app_handle.try_state::<AppState>() {
+                            let _ = stop_recording_and_insert(app_handle.clone(), st).await;
+                        }
+                    });
+                    break;
+                }
                 voicekey_audio::AudioEvent::Level(_) => {}
             }
         }

@@ -29,6 +29,15 @@ class VoiceKeyApp {
       this.openOnboarding();
     }
 
+    // Fetch initial status from native backend
+    try {
+      const initialStatus = await tauriService.getStatus();
+      const s = typeof initialStatus === 'string' ? initialStatus.toLowerCase() : String(initialStatus).toLowerCase();
+      this.isRecording = s === 'recording' || s === 'processing' || s === 'writing';
+    } catch {
+      this.isRecording = false;
+    }
+
     // Subscribe to model service
     modelService.subscribe(() => {
       if (this.currentView === 'overview') this.renderOverview();
@@ -149,14 +158,14 @@ class VoiceKeyApp {
 
       <div class="status-banner">
         <div class="status-info">
-          <div class="status-dot" style="background-color: ${this.isRecording ? 'var(--warning)' : 'var(--success)'};"></div>
+          <div class="status-dot ${this.isRecording ? 'active' : 'idle'}"></div>
           <div>
-            <div class="status-title">${this.isRecording ? 'Dictation Active' : 'Ready to Listen'}</div>
-            <div class="status-desc">Press <span class="kbd">⌥ Space</span> anywhere to toggle voice typing</div>
+            <div class="status-title">${this.isRecording ? 'Listening...' : 'Idle'}</div>
+            <div class="status-desc">${this.isRecording ? 'Microphone active. Speak or press <span class="kbd">⌥ Space</span> to finish.' : 'Microphone is off. Press <span class="kbd">⌥ Space</span> anywhere to start dictating.'}</div>
           </div>
         </div>
         <div class="status-action-group">
-          <button id="btn-test-dictate" class="btn ${this.isRecording ? 'btn-danger' : 'btn-primary'}">
+          <button id="btn-test-dictate" class="btn ${this.isRecording ? 'btn-danger' : 'btn-secondary'}">
             ${this.isRecording ? 'Stop Dictation' : 'Start Dictation'}
           </button>
         </div>
@@ -202,8 +211,8 @@ class VoiceKeyApp {
               <h3>Microphone</h3>
               <p>Audio Input Source</p>
             </div>
-            <span class="badge ${this.micTesting ? 'accent-badge' : 'active-badge'}">
-              ${this.micTesting ? 'Testing' : 'Ready'}
+            <span class="badge ${this.isRecording ? 'accent-badge' : (this.micTesting ? 'accent-badge' : '')}">
+              ${this.isRecording ? 'Active' : (this.micTesting ? 'Testing' : 'Standby')}
             </span>
           </div>
 
@@ -211,7 +220,7 @@ class VoiceKeyApp {
             ${micDevice}
           </div>
           <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">
-            16 kHz mono high-fidelity capture with voice activity detection.
+            16 kHz mono capture. Remains completely idle until dictation is triggered.
           </div>
 
           <div class="meter-container">
