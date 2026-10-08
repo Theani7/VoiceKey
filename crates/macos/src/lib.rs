@@ -52,14 +52,26 @@ extern "C" {
     ) -> *mut c_void;
     fn CGEventSetFlags(event: *mut c_void, flags: u64);
     fn CGEventPost(tap: u32, event: *mut c_void);
-    fn CGEventPostToPid(pid: i32, event: *mut c_void);
 }
 
 const K_CG_HID_EVENT_TAP: u32 = 0;
 const K_CG_SESSION_EVENT_TAP: u32 = 1;
-const K_CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE: i32 = 1;
 const K_CG_EVENT_FLAG_MASK_COMMAND: u64 = 0x00100000;
 const KEY_CODE_V: u16 = 9;
+
+/// Configures and shows an NSWindow without making it key or activating the host app
+pub unsafe fn show_window_without_stealing_focus(ns_win: *mut c_void) {
+    if ns_win.is_null() {
+        return;
+    }
+    let win = ns_win as id;
+    // NSWindowStyleMaskNonactivatingPanel = 128
+    let mask: u64 = msg_send![win, styleMask];
+    let _: () = msg_send![win, setStyleMask: mask | 128u64];
+    let _: () = msg_send![win, setLevel: 25i64];
+    let _: () = msg_send![win, setCollectionBehavior: 0x111u64];
+    let _: () = msg_send![win, orderFrontRegardless];
+}
 
 /// Checks if the application has macOS Accessibility permissions
 pub fn is_accessibility_enabled() -> bool {
@@ -158,16 +170,16 @@ pub fn direct_ax_insert(text: &str) -> Result<bool, MacOSError> {
     }
 }
 
-/// Synthesizes Cmd+V keystroke directly targeting application PID and session taps
+/// Synthesizes Cmd+V keystroke for macOS session applications (including sandboxed apps like WhatsApp)
 pub fn paste_keystroke(target_pid: Option<i32>) -> Result<(), MacOSError> {
     unsafe {
         if let Some(pid) = target_pid {
             activate_app_by_pid(pid);
-            sleep(Duration::from_millis(40));
+            sleep(Duration::from_millis(50));
         }
 
-        // Create an isolated event source to clear conflicting hardware modifiers (e.g. Option key)
-        let source = CGEventSourceCreate(K_CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE);
+        // kCGEventSourceStateCombinedSessionState = 0 allows sandboxed apps (like WhatsApp) to receive synthetic events
+        let source = CGEventSourceCreate(0);
 
         let key_down = CGEventCreateKeyboardEvent(source, KEY_CODE_V, true);
         if key_down.is_null() {
@@ -177,10 +189,6 @@ pub fn paste_keystroke(target_pid: Option<i32>) -> Result<(), MacOSError> {
             return Err(MacOSError::EventError("Failed to create key down event".into()));
         }
         CGEventSetFlags(key_down, K_CG_EVENT_FLAG_MASK_COMMAND);
-
-        if let Some(pid) = target_pid {
-            CGEventPostToPid(pid, key_down);
-        }
         CGEventPost(K_CG_SESSION_EVENT_TAP, key_down);
         CGEventPost(K_CG_HID_EVENT_TAP, key_down);
         CFRelease(key_down);
@@ -195,10 +203,6 @@ pub fn paste_keystroke(target_pid: Option<i32>) -> Result<(), MacOSError> {
             return Err(MacOSError::EventError("Failed to create key up event".into()));
         }
         CGEventSetFlags(key_up, K_CG_EVENT_FLAG_MASK_COMMAND);
-
-        if let Some(pid) = target_pid {
-            CGEventPostToPid(pid, key_up);
-        }
         CGEventPost(K_CG_SESSION_EVENT_TAP, key_up);
         CGEventPost(K_CG_HID_EVENT_TAP, key_up);
         CFRelease(key_up);
@@ -243,4 +247,23 @@ pub fn insert_text(text: &str, target_pid: Option<i32>) -> Result<(), MacOSError
     paste_keystroke(target_pid)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_diagnose_frontmost() {
+        let pid = get_frontmost_app_pid();
+        println!("Diagnose: frontmost PID = {:?}", pid);
+        let ax = direct_ax_insert("test");
+        println!("Diagnose: direct_ax_insert result = {:?}", ax);
+
+        let mut cb = Clipboard::new().unwrap();
+        cb.set_text("test_nepali_नमस्ते").unwrap();
+        let read = cb.get_text().unwrap();
+        assert_eq!(read, "test_nepali_नमस्ते");
+        println!("Diagnose: clipboard verified: {:?}", read);
+    }
 }

@@ -15,7 +15,10 @@ use voicekey_core::{
     get_default_models, AppSettings, AppStatus, DownloadProgress, ModelStatus,
     SystemCapabilities, VoiceModel,
 };
-use voicekey_macos::{insert_text, is_accessibility_enabled, request_accessibility_permission};
+use voicekey_macos::{
+    insert_text, is_accessibility_enabled, request_accessibility_permission,
+    show_window_without_stealing_focus,
+};
 use voicekey_text::TextNormalizer;
 
 pub struct AppState {
@@ -253,8 +256,17 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
     let _ = app.emit("status-changed", AppStatus::Recording);
 
     if let Some(overlay) = app.get_webview_window("overlay") {
-        let _ = overlay.show();
-        let _ = overlay.set_always_on_top(true);
+        #[cfg(target_os = "macos")]
+        if let Ok(ns_win) = overlay.ns_window() {
+            unsafe {
+                show_window_without_stealing_focus(ns_win);
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = overlay.show();
+            let _ = overlay.set_always_on_top(true);
+        }
     }
 
     // Continuous pause-to-type event loop (like Siri / Gemini Voice Typing)
