@@ -82,7 +82,7 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
                         "VoiceKey: Pause detected, transcribing speech chunk ({} samples)...",
                         samples.len()
                     );
-                    let _ = app_clone.emit("status-changed", "processing");
+                    let _ = app_clone.emit("status-changed", AppStatus::Processing);
 
                     let rec = recognizer.clone();
                     let norm = normalizer.clone();
@@ -91,8 +91,10 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
                         let text = norm.normalize(&raw_text);
                         if !text.is_empty() {
                             info!("VoiceKey Auto-Typed Chunk: '{}'", text);
+                            let _ = app_clone.emit("status-changed", AppStatus::Writing);
                             let to_type = format!("{} ", text);
                             let _ = insert_text(&to_type);
+                            std::thread::sleep(std::time::Duration::from_millis(250));
                         }
                     }
 
@@ -103,16 +105,6 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
                             let _ = app_clone.emit("status-changed", AppStatus::Recording);
                         }
                     }
-                }
-                voicekey_audio::AudioEvent::SilenceTimeout => {
-                    info!("VoiceKey: Silence timeout, auto-completing session");
-                    let app_handle = app_clone.clone();
-                    tauri::async_runtime::spawn(async move {
-                        if let Some(st) = app_handle.try_state::<AppState>() {
-                            let _ = stop_recording_and_insert(app_handle.clone(), st).await;
-                        }
-                    });
-                    break;
                 }
                 voicekey_audio::AudioEvent::Level(_) => {}
             }
@@ -143,14 +135,14 @@ async fn stop_recording_and_insert(
 ) -> Result<Option<String>, String> {
     {
         let mut status = state.status.lock().await;
-        if *status != AppStatus::Recording {
+        if *status != AppStatus::Recording && *status != AppStatus::Writing && *status != AppStatus::Processing {
             return Ok(None);
         }
         *status = AppStatus::Processing;
         let _ = app.emit("status-changed", AppStatus::Processing);
     }
 
-    info!("VoiceKey: Processing audio...");
+    info!("VoiceKey: Stopping dictation session...");
     let samples = match state.recorder.stop() {
         Ok(s) => s,
         Err(e) => {
@@ -165,52 +157,25 @@ async fn stop_recording_and_insert(
         }
     };
 
-    if samples.is_empty() {
-        let mut status = state.status.lock().await;
-        *status = AppStatus::Idle;
-        let _ = app.emit("status-changed", AppStatus::Idle);
-        if let Some(overlay) = app.get_webview_window("overlay") {
-            let _ = overlay.hide();
-        }
-        return Ok(None);
-    }
-
     let recognizer = state.recognizer.clone();
     let normalizer = state.normalizer.clone();
+    let mut final_text = None;
 
-    // Run ASR on background thread with error handling
-    let raw_text_result = tokio::task::spawn_blocking(move || recognizer.transcribe_samples(&samples)).await;
-    let raw_text = match raw_text_result {
-        Ok(Ok(text)) => text,
-        Ok(Err(e)) => {
-            warn!("ASR transcription error: {}", e);
-            let mut status = state.status.lock().await;
-            *status = AppStatus::Idle;
-            let _ = app.emit("status-changed", AppStatus::Idle);
-            if let Some(overlay) = app.get_webview_window("overlay") {
-                let _ = overlay.hide();
+    // Transcribe residual speech if non-silent (RMS >= 0.015 and >= 300ms)
+    let sum_sq: f32 = samples.iter().map(|&s| s * s).sum();
+    let rms = (sum_sq / samples.len().max(1) as f32).sqrt();
+    if rms >= 0.015 && samples.len() >= 4800 {
+        let _ = app.emit("status-changed", AppStatus::Writing);
+        let raw_text_result = tokio::task::spawn_blocking(move || recognizer.transcribe_samples(&samples)).await;
+        if let Ok(Ok(raw_text)) = raw_text_result {
+            let normalized_text = normalizer.normalize(&raw_text);
+            if !normalized_text.is_empty() {
+                info!("VoiceKey Transcribed Final Chunk: '{}' -> '{}'", raw_text, normalized_text);
+                let text_to_insert = format!("{} ", normalized_text);
+                let _ = tokio::task::spawn_blocking(move || insert_text(&text_to_insert)).await;
+                final_text = Some(normalized_text);
             }
-            return Err(e.to_string());
         }
-        Err(join_err) => {
-            warn!("ASR join error: {}", join_err);
-            let mut status = state.status.lock().await;
-            *status = AppStatus::Idle;
-            let _ = app.emit("status-changed", AppStatus::Idle);
-            if let Some(overlay) = app.get_webview_window("overlay") {
-                let _ = overlay.hide();
-            }
-            return Err(join_err.to_string());
-        }
-    };
-
-    let normalized_text = normalizer.normalize(&raw_text);
-    info!("VoiceKey Transcribed: '{}' -> '{}'", raw_text, normalized_text);
-
-    // Insert text into cursor
-    if !normalized_text.is_empty() {
-        let text_to_insert = normalized_text.clone();
-        let _ = tokio::task::spawn_blocking(move || insert_text(&text_to_insert)).await;
     }
 
     {
@@ -219,10 +184,10 @@ async fn stop_recording_and_insert(
         let _ = app.emit("status-changed", AppStatus::Done);
     }
 
-    // Reset to idle after 600ms and hide HUD overlay if still Done
+    // Reset to idle after 500ms and hide HUD overlay
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(600)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
         if let Some(state) = app_clone.try_state::<AppState>() {
             let mut s = state.status.lock().await;
             if *s == AppStatus::Done {
@@ -235,7 +200,7 @@ async fn stop_recording_and_insert(
         }
     });
 
-    Ok(Some(normalized_text))
+    Ok(final_text)
 }
 
 fn main() {
@@ -284,14 +249,11 @@ fn main() {
                         if let Some(state) = handle.try_state::<AppState>() {
                             let current_status = { *state.status.lock().await };
                             match current_status {
-                                AppStatus::Recording => {
+                                AppStatus::Recording | AppStatus::Writing | AppStatus::Processing => {
                                     let _ = stop_recording_and_insert(handle.clone(), state).await;
                                 }
                                 AppStatus::Idle | AppStatus::Done | AppStatus::Error => {
                                     let _ = start_recording(handle.clone(), state).await;
-                                }
-                                AppStatus::Processing => {
-                                    // Busy processing audio, ignore shortcut
                                 }
                             }
                         }
@@ -325,13 +287,12 @@ fn main() {
                             if let Some(state) = app_handle.try_state::<AppState>() {
                                 let current_status = { *state.status.lock().await };
                                 match current_status {
-                                    AppStatus::Recording => {
+                                    AppStatus::Recording | AppStatus::Writing | AppStatus::Processing => {
                                         let _ = stop_recording_and_insert(app_handle.clone(), state).await;
                                     }
                                     AppStatus::Idle | AppStatus::Done | AppStatus::Error => {
                                         let _ = start_recording(app_handle.clone(), state).await;
                                     }
-                                    AppStatus::Processing => {}
                                 }
                             }
                         });

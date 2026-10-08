@@ -7,6 +7,7 @@ pub enum AppStatus {
     Idle,
     Recording,
     Processing,
+    Writing,
     Done,
     Error,
 }

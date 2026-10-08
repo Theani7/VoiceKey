@@ -36,7 +36,6 @@ pub struct AudioDeviceInfo {
 #[derive(Debug, Clone)]
 pub enum AudioEvent {
     SpeechChunk(Vec<f32>),
-    SilenceTimeout,
     Level(f32),
 }
 
@@ -134,7 +133,6 @@ impl AudioRecorder {
 
                             let pause_limit_samples = (sample_rate as usize * channels * 75) / 100; // 750ms pause
                             let min_speech_samples = (sample_rate as usize * channels * 35) / 100; // 350ms minimum speech
-                            let max_silence_timeout = sample_rate as usize * channels * 4; // 4s timeout
 
                             let process_chunk = move |chunk: &[f32]| {
                                 let sum_sq: f32 = chunk.iter().map(|&s| s * s).sum();
@@ -178,11 +176,6 @@ impl AudioRecorder {
 
                                         is_speaking_clone.store(false, Ordering::SeqCst);
                                         *s_samples = 0;
-                                        *sil_samples = 0;
-                                    } else if !is_speaking_clone.load(Ordering::SeqCst)
-                                        && *sil_samples >= max_silence_timeout
-                                    {
-                                        let _ = tx.send(AudioEvent::SilenceTimeout);
                                         *sil_samples = 0;
                                     }
                                 }
