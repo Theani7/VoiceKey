@@ -1,0 +1,25 @@
+[package]
+name = "voicekey-app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+voicekey-core = { path = "../../../crates/core" }
+voicekey-audio = { path = "../../../crates/audio" }
+voicekey-text = { path = "../../../crates/text" }
+voicekey-macos = { path = "../../../crates/macos" }
+voicekey-asr = { path = "../../../crates/asr" }
+
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-shell = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

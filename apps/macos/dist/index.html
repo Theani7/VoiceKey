@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoiceKey Settings</title>
+  <style>
+    :root {
+      --bg: #1e1e1e;
+      --card-bg: #2d2d2d;
+      --text: #f0f0f0;
+      --subtext: #a0a0a0;
+      --accent: #007aff;
+      --border: #3d3d3d;
+      --danger: #ff453a;
+      --success: #32d74b;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f5f5f7;
+        --card-bg: #ffffff;
+        --text: #1d1d1f;
+        --subtext: #86868b;
+        --accent: #0071e3;
+        --border: #d2d2d7;
+      }
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      user-select: none;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      margin: 0;
+    }
+    .badge {
+      font-size: 11px;
+      background: var(--accent);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
+    .section {
+      background: var(--card-bg);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--subtext);
+      margin-bottom: 12px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .row:last-child {
+      border-bottom: none;
+    }
+    .label {
+      font-size: 14px;
+      font-weight: 400;
+    }
+    .sublabel {
+      font-size: 12px;
+      color: var(--subtext);
+      margin-top: 2px;
+    }
+    .shortcut-badge {
+      background: var(--border);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-family: ui-monospace, monospace;
+      font-size: 13px;
+    }
+    button {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--success);
+      margin-right: 6px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>VoiceKey</h1>
+    <span class="badge">Nepali ASR</span>
+  </header>
+
+  <div class="section">
+    <div class="section-title">Global Shortcut</div>
+    <div class="row">
+      <div>
+        <div class="label">Toggle Dictation</div>
+        <div class="sublabel">Press anywhere on macOS to start or stop voice typing</div>
+      </div>
+      <div class="shortcut-badge">⌥ Space</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Permissions</div>
+    <div class="row">
+      <div>
+        <div class="label">Accessibility Access</div>
+        <div class="sublabel">Required to type transcribed text directly into other applications</div>
+      </div>
+      <button id="btn-perm">Check / Grant</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Text Processing</div>
+    <div class="row">
+      <div>
+        <div class="label">Auto-Punctuation (Danda ।)</div>
+        <div class="sublabel">Automatically append Devanagari full stop</div>
+      </div>
+      <input type="checkbox" checked disabled>
+    </div>
+    <div class="row">
+      <div>
+        <div class="label">Devanagari Numerals (०-९)</div>
+        <div class="sublabel">Convert digits into Nepali numerals</div>
+      </div>
+      <input type="checkbox" checked disabled>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">About</div>
+    <div class="row">
+      <div>
+        <div class="label">Kriti Model</div>
+        <div class="sublabel">119M Parameters • Offline on Apple Silicon</div>
+      </div>
+      <div style="font-size: 12px; color: var(--subtext);">v1.0.0</div>
+    </div>
+  </div>
+
+  <script>
+    const { invoke } = window.__TAURI__.core;
+    document.getElementById("btn-perm").addEventListener("click", async () => {
+      const ok = await invoke("request_permissions");
+      if (ok) {
+        alert("Accessibility permission is granted!");
+      }
+    });
+  </script>
+</body>
+</html>
