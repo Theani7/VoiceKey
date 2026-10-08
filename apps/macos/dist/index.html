@@ -3,184 +3,92 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VoiceKey Settings</title>
-  <style>
-    :root {
-      --bg: #1e1e1e;
-      --card-bg: #2d2d2d;
-      --text: #f0f0f0;
-      --subtext: #a0a0a0;
-      --accent: #007aff;
-      --border: #3d3d3d;
-      --danger: #ff453a;
-      --success: #32d74b;
-    }
-    @media (prefers-color-scheme: light) {
-      :root {
-        --bg: #f5f5f7;
-        --card-bg: #ffffff;
-        --text: #1d1d1f;
-        --subtext: #86868b;
-        --accent: #0071e3;
-        --border: #d2d2d7;
-      }
-    }
-    body {
-      margin: 0;
-      padding: 24px;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      user-select: none;
-    }
-    header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 24px;
-    }
-    header h1 {
-      font-size: 20px;
-      font-weight: 600;
-      margin: 0;
-    }
-    .badge {
-      font-size: 11px;
-      background: var(--accent);
-      color: white;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-weight: 500;
-    }
-    .section {
-      background: var(--card-bg);
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      padding: 16px;
-      margin-bottom: 16px;
-    }
-    .section-title {
-      font-size: 13px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--subtext);
-      margin-bottom: 12px;
-    }
-    .row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
-    }
-    .row:last-child {
-      border-bottom: none;
-    }
-    .label {
-      font-size: 14px;
-      font-weight: 400;
-    }
-    .sublabel {
-      font-size: 12px;
-      color: var(--subtext);
-      margin-top: 2px;
-    }
-    .shortcut-badge {
-      background: var(--border);
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-family: ui-monospace, monospace;
-      font-size: 13px;
-    }
-    button {
-      background: var(--accent);
-      color: white;
-      border: none;
-      padding: 6px 14px;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-    }
-    button:hover {
-      opacity: 0.9;
-    }
-    .status-indicator {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--success);
-      margin-right: 6px;
-    }
-  </style>
+  <title>VoiceKey</title>
+  <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <header>
-    <h1>VoiceKey</h1>
-    <span class="badge">Nepali ASR</span>
-  </header>
-
-  <div class="section">
-    <div class="section-title">Global Shortcut</div>
-    <div class="row">
-      <div>
-        <div class="label">Toggle Dictation</div>
-        <div class="sublabel">Press anywhere on macOS to start or stop voice typing</div>
+  <div class="app-container">
+    <!-- Native macOS Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="22"></line>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">VoiceKey</span>
+          <span class="brand-tagline">Speak. Type. Done.</span>
+        </div>
       </div>
-      <div class="shortcut-badge">⌥ Space</div>
-    </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-item active" data-view="overview">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          <span>Overview</span>
+        </div>
+
+        <div class="nav-item" data-view="models">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+          <span>Models</span>
+          <span class="nav-badge" id="models-count-badge">2</span>
+        </div>
+
+        <div class="nav-item" data-view="history">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          <span>History</span>
+        </div>
+
+        <div class="sidebar-divider"></div>
+
+        <div class="nav-item" data-view="settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span>Settings</span>
+        </div>
+
+        <div class="nav-item" data-view="about">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+          <span>About</span>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="btn-cmd-palette" class="cmd-hint-btn">
+          <span>Commands</span>
+          <span class="kbd">⌘ K</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Viewport -->
+    <main class="main-content">
+      <div class="content-body" id="content-body">
+        <!-- Views dynamically injected by app.js -->
+      </div>
+    </main>
   </div>
 
-  <div class="section">
-    <div class="section-title">Permissions</div>
-    <div class="row">
-      <div>
-        <div class="label">Accessibility Access</div>
-        <div class="sublabel">Required to type transcribed text directly into other applications</div>
-      </div>
-      <button id="btn-perm">Check / Grant</button>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Text Processing</div>
-    <div class="row">
-      <div>
-        <div class="label">Auto-Punctuation (Danda ।)</div>
-        <div class="sublabel">Automatically append Devanagari full stop</div>
-      </div>
-      <input type="checkbox" checked disabled>
-    </div>
-    <div class="row">
-      <div>
-        <div class="label">Devanagari Numerals (०-९)</div>
-        <div class="sublabel">Convert digits into Nepali numerals</div>
-      </div>
-      <input type="checkbox" checked disabled>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">About</div>
-    <div class="row">
-      <div>
-        <div class="label">Kriti Model</div>
-        <div class="sublabel">119M Parameters • Offline on Apple Silicon</div>
-      </div>
-      <div style="font-size: 12px; color: var(--subtext);">v1.0.0</div>
-    </div>
-  </div>
-
-  <script>
-    const { invoke } = window.__TAURI__.core;
-    document.getElementById("btn-perm").addEventListener("click", async () => {
-      const ok = await invoke("request_permissions");
-      if (ok) {
-        alert("Accessibility permission is granted!");
-      }
-    });
-  </script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

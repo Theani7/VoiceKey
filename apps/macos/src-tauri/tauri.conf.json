@@ -11,10 +11,12 @@
     "windows": [
       {
         "label": "main",
-        "title": "VoiceKey Settings",
-        "width": 640,
-        "height": 520,
-        "resizable": false,
+        "title": "VoiceKey",
+        "width": 920,
+        "height": 620,
+        "minWidth": 780,
+        "minHeight": 540,
+        "resizable": true,
         "visible": false
       },
       {
