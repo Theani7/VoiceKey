@@ -346,10 +346,8 @@ async fn stop_recording_and_insert(
     let normalizer = state.normalizer.clone();
     let mut final_text = None;
 
-    // Transcribe residual speech if non-silent (RMS >= 0.015 and >= 300ms)
-    let sum_sq: f32 = samples.iter().map(|&s| s * s).sum();
-    let rms = (sum_sq / samples.len().max(1) as f32).sqrt();
-    if rms >= 0.015 && samples.len() >= 4800 {
+    // Transcribe residual speech if samples buffer has audio (>= 250ms at 16kHz)
+    if samples.len() >= 4000 {
         let _ = app.emit("status-changed", AppStatus::Writing);
         let raw_text_result = tokio::task::spawn_blocking(move || recognizer.transcribe_samples(&samples)).await;
         if let Ok(Ok(raw_text)) = raw_text_result {

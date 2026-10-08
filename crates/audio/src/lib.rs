@@ -132,16 +132,15 @@ impl AudioRecorder {
                             let silence_clone = silence_samples.clone();
                             let speech_clone = speech_samples.clone();
 
-                            let pause_limit_samples = (sample_rate as usize * channels * 75) / 100; // 750ms pause
-                            let min_speech_samples = (sample_rate as usize * channels * 35) / 100; // 350ms minimum speech
+                            let pause_limit_samples = (sample_rate as usize * channels * 65) / 100; // 650ms pause
+                            let min_speech_samples = (sample_rate as usize * channels * 25) / 100; // 250ms minimum speech
                             let inactivity_limit_samples = sample_rate as usize * channels * 10; // 10s auto-stop
 
                             let process_chunk = move |chunk: &[f32]| {
                                 let sum_sq: f32 = chunk.iter().map(|&s| s * s).sum();
                                 let rms = (sum_sq / chunk.len().max(1) as f32).sqrt();
 
-                                const SPEECH_THRESHOLD: f32 = 0.016;
-                                const SILENCE_THRESHOLD: f32 = 0.011;
+                                const SPEECH_THRESHOLD: f32 = 0.0055;
 
                                 let mut s_samples = speech_clone.lock().unwrap();
                                 let mut sil_samples = silence_clone.lock().unwrap();
@@ -150,7 +149,7 @@ impl AudioRecorder {
                                     is_speaking_clone.store(true, Ordering::SeqCst);
                                     *s_samples += chunk.len();
                                     *sil_samples = 0;
-                                } else if rms < SILENCE_THRESHOLD {
+                                } else {
                                     *sil_samples += chunk.len();
                                 }
 
