@@ -17,7 +17,7 @@ use voicekey_core::{
 };
 #[cfg(target_os = "macos")]
 use voicekey_macos::{show_window_without_stealing_focus, is_accessibility_enabled, request_accessibility_permission, get_frontmost_app_pid};
-use voicekey_platform::{get_injector, PlatformError};
+use voicekey_platform::get_injector;
 use voicekey_text::TextNormalizer;
 
 pub struct AppState {

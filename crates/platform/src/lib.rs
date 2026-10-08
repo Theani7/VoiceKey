@@ -30,7 +30,7 @@ pub trait TextInjector {
 #[cfg(feature = "macos")]
 mod macos_impl {
     use super::{PlatformError, TextInjector};
-    use voicekey_macos::{insert_text as mac_insert_text, MacOSError};
+    use voicekey_macos::insert_text as mac_insert_text;
 
     pub struct MacInjector;
 

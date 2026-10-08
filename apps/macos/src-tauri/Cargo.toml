@@ -13,14 +13,6 @@ voicekey-core = { path = "../../../crates/core" }
 voicekey-audio = { path = "../../../crates/audio" }
 voicekey-text = { path = "../../../crates/text" }
 voicekey-asr = { path = "../../../crates/asr" }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-voicekey-macos = { path = "../../../crates/macos" }
-voicekey_platform = { path = "../../../crates/platform", features = ["macos"] }
-
-[target.'cfg(not(target_os = "macos"))'.dependencies]
-voicekey_platform = { path = "../../../crates/platform" }
-
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-shell = "2"
@@ -29,3 +21,10 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+voicekey-macos = { path = "../../../crates/macos" }
+voicekey_platform = { path = "../../../crates/platform", features = ["macos"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+voicekey_platform = { path = "../../../crates/platform" }
