@@ -46,7 +46,7 @@ jobs:
             librsvg2-dev patchelf
 
       - name: Build release binary
-        run: cargo build --release --workspace --target ${{ matrix.target }}
+        run: cargo build --release --package voicekey-app --target ${{ matrix.target }}
 
       - name: Rename artifact (Unix)
         if: matrix.os != 'windows-latest'

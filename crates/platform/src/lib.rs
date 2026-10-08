@@ -11,6 +11,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PlatformError {
+    #[cfg(target_os = "macos")]
     #[error("macOS error: {0}")]
     Mac(#[from] voicekey_macos::MacOSError),
     #[error("operation not implemented on this platform")]

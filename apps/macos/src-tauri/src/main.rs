@@ -15,6 +15,7 @@ use voicekey_core::{
     get_default_models, AppSettings, AppStatus, DownloadProgress, ModelStatus,
     SystemCapabilities, VoiceModel,
 };
+#[cfg(target_os = "macos")]
 use voicekey_macos::{show_window_without_stealing_focus, is_accessibility_enabled, request_accessibility_permission, get_frontmost_app_pid};
 use voicekey_platform::{get_injector, PlatformError};
 use voicekey_text::TextNormalizer;
@@ -37,12 +38,18 @@ async fn get_status(state: State<'_, AppState>) -> Result<AppStatus, String> {
 
 #[tauri::command]
 async fn check_permissions() -> Result<bool, String> {
-    Ok(is_accessibility_enabled())
+    #[cfg(target_os = "macos")]
+    { Ok(is_accessibility_enabled()) }
+    #[cfg(not(target_os = "macos"))]
+    { Ok(true) }
 }
 
 #[tauri::command]
 async fn request_permissions() -> Result<bool, String> {
-    Ok(request_accessibility_permission())
+    #[cfg(target_os = "macos")]
+    { Ok(request_accessibility_permission()) }
+    #[cfg(not(target_os = "macos"))]
+    { Ok(true) }
 }
 
 #[tauri::command]
@@ -230,19 +237,24 @@ async fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(
     }
 
     // Capture frontmost app PID before overlay window is shown
-    let front_pid = voicekey_macos::get_frontmost_app_pid();
-    let current_pid = std::process::id() as i32;
-    let target_pid = if let Some(pid) = front_pid {
-        if pid != current_pid {
-            let mut t = state.target_pid.lock().await;
-            *t = Some(pid);
-            Some(pid)
+    #[cfg(target_os = "macos")]
+    let target_pid = {
+        let front_pid = get_frontmost_app_pid();
+        let current_pid = std::process::id() as i32;
+        if let Some(pid) = front_pid {
+            if pid != current_pid {
+                let mut t = state.target_pid.lock().await;
+                *t = Some(pid);
+                Some(pid)
+            } else {
+                *state.target_pid.lock().await
+            }
         } else {
             *state.target_pid.lock().await
         }
-    } else {
-        *state.target_pid.lock().await
     };
+    #[cfg(not(target_os = "macos"))]
+    let target_pid = { *state.target_pid.lock().await };
 
     let (event_tx, event_rx) = std::sync::mpsc::channel::<voicekey_audio::AudioEvent>();
     state
@@ -525,7 +537,8 @@ fn main() {
                         });
                     }
                     "perms" => {
-                        let _ = request_accessibility_permission();
+                        #[cfg(target_os = "macos")]
+                        { let _ = request_accessibility_permission(); }
                     }
                     "quit" => {
                         app.exit(0);
