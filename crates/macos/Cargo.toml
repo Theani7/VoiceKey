@@ -1,0 +1,18 @@
+[package]
+name = "voicekey-macos"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+voicekey-core = { path = "../core" }
+core-foundation = "0.10"
+core-graphics = "0.24"
+objc = "0.2"
+cocoa = "0.26"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+arboard = "3.4"
+
+[build-dependencies]
